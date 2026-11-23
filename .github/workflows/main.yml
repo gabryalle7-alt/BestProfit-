@@ -303,9 +303,7 @@ jobs:
                   <TextView android:text="Ghid Honor" android:textSize="18sp" android:textStyle="bold" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
               </LinearLayout>
           </ScrollView>
-          ''')
-
-          # ---------- KOTLIN ----------
+          ''')          # ---------- PARTEA 2 ----------
           w('app/src/main/java/ro/profitride/App.kt', r'''
           package ro.profitride
           import android.app.Application
@@ -775,8 +773,7 @@ jobs:
 
               override fun onDestroy() { handler.removeCallbacks(calcRunnable); super.onDestroy() }
           }
-          ''')
-
+          ''')          # ---------- PARTEA 3 ----------
           w('app/src/main/java/ro/profitride/SummaryActivity.kt', r'''
           package ro.profitride
           import android.app.AlertDialog
@@ -1288,8 +1285,7 @@ jobs:
           class SetupActivity : AppCompatActivity() {
               override fun onCreate(b: Bundle?) { super.onCreate(b); setContentView(R.layout.activity_setup) }
           }
-          ''')
-
+          ''')          # ---------- PARTEA 4 ----------
           w('app/src/main/java/ro/profitride/OfferReader.kt', r'''
           package ro.profitride
 
@@ -1644,4 +1640,32 @@ jobs:
                   return try {
                       val t = Trips.readAll(this).first.lastOrNull() ?: return "Nicio cursa."
                       val st = Trips.stats(this, "DAY")
-    
+                      "Ultima:\nTarif: ${"%.2f".format(t.price)} RON\nKm: ${"%.1f".format(t.pk + t.tk)}\nRON/km: ${"%.2f".format(t.gross)}\nNet: ${"%.2f".format(t.net)}\n--\nAzi: ${"%.0f".format(st.netAfterFixed)} RON (${st.count} curse)"
+                  } catch (_: Exception) { "Nicio cursa." }
+              }
+
+              private fun removeSidePanel() { try { sidePanelView?.let { wm.removeView(it) } } catch (_: Throwable) {}; sidePanelView = null }
+              private fun removeSideBar() { try { sideBarView?.let { wm.removeView(it) } } catch (_: Throwable) {}; sideBarView = null }
+
+              override fun onInterrupt() { removeOverlay(); removeSideBar(); removeSidePanel() }
+              override fun onDestroy() {
+                  instance = null
+                  removeOverlay(); removeSideBar(); removeSidePanel()
+                  try { unregisterReceiver(screenOff) } catch (_: Throwable) {}
+                  try { tts?.stop(); tts?.shutdown() } catch (_: Throwable) {}
+                  tts = null; super.onDestroy()
+              }
+          }
+          ''')
+          PYEOF
+
+      - name: Build debug APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProfitRide-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
