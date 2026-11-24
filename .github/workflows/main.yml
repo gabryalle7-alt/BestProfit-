@@ -1285,7 +1285,7 @@ jobs:
           class SetupActivity : AppCompatActivity() {
               override fun onCreate(b: Bundle?) { super.onCreate(b); setContentView(R.layout.activity_setup) }
           }
-          ''')          # ---------- PARTEA 4 ----------
+          ''')            # ---------- PARTEA 4 ----------
           w('app/src/main/java/ro/profitride/OfferReader.kt', r'''
           package ro.profitride
 
@@ -1390,12 +1390,12 @@ jobs:
                       val pkg = event.packageName?.toString()?.lowercase() ?: return
                       if (!isOfficial(pkg)) return
 
-                      // Salvare la apasarea Accept
+                      // Salvare la apasarea Accept / Confirm
                       if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
                           val t = "${event.text?.joinToString(" ") ?: ""} ${event.source?.text ?: ""} ${event.source?.contentDescription ?: ""}".lowercase()
                           val now0 = System.currentTimeMillis()
                           val o = pendingOffer
-                          if (t.contains("accept") && o != null && now0 - pendingAt < STALE_PENDING_MS) {
+                          if ((t.contains("accept") || t.contains("confirm")) && o != null && now0 - pendingAt < STALE_PENDING_MS) {
                               log("ACCEPT CLICK")
                               saveTrip(o.priceRon, o.pickupKm, o.tripKm, now0)
                               lastSavedPrice = o.priceRon; lastSavedKm = o.pickupKm + o.tripKm; lastSavedAt = now0
@@ -1404,8 +1404,12 @@ jobs:
                           return
                       }
 
-                      val root = rootInActiveWindow ?: return
-                      sb.setLength(0); collect(root, sb, 0)
+                      sb.setLength(0)
+                      val roots = ArrayList<AccessibilityNodeInfo>()
+                      try { windows?.forEach { w -> w.root?.let { r -> if (r.packageName?.toString()?.lowercase()?.let { isOfficial(it) } == true) roots.add(r) } } } catch (_: Throwable) {}
+                      if (roots.isEmpty()) { rootInActiveWindow?.let { roots.add(it) } }
+                      if (roots.isEmpty()) return
+                      for (r in roots) collect(r, sb, 0)
                       val raw = sb.toString().lowercase()
                       if (raw.isEmpty()) return
                       val h = raw.hashCode()
@@ -1413,8 +1417,11 @@ jobs:
                       if (h == lastTextHash && now - lastTextTime < HASH_MS) return
                       lastTextHash = h; lastTextTime = now
 
-                      if (raw.contains("accept")) {
+                      val looksOffer = raw.contains("accept") || raw.contains("confirm") || raw.contains("selecteaz") || (raw.contains("km") && raw.contains("min") && (raw.contains("ron") || raw.contains("lei")))
+                      if (!looksOffer && raw.contains("km")) log("SCREEN $pkg: " + raw.replace('\n', '|').take(300))
+                      if (looksOffer) {
                           val offer = OfferParser.parse(raw, avgSpeed())
+                          if (offer == null) log("NEPARSAT $pkg: " + raw.replace('\n', '|').take(300))
                           if (offer != null) {
                               val key = "${offer.priceRon}|${offer.pickupKm}|${offer.tripKm}"
                               val justSaved = Math.abs(offer.priceRon - lastSavedPrice) < 0.05f &&
@@ -1668,4 +1675,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ProfitRide-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/app-debug.apk       
+          
