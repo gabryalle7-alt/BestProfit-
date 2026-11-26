@@ -1,5 +1,4 @@
-# ---------- PARTEA 1 ----------
-import os
+
 
 def w(p, t):
     d = os.path.dirname(p)
