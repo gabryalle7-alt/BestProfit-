@@ -1,62 +1,4 @@
-name: Build ProfitRide APK
-
-on:
-  push:
-    branches: [main, master]
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Install Android SDK
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"
-
-      - uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: 8.2
-
-      - name: Setup keystore
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        run: |
-          if [ ! -f app/keystore.b64 ]; then
-            echo "Prima rulare - generez keystore..."
-            mkdir -p app
-            keytool -genkeypair -v -keystore app/release.jks -keyalg RSA -keysize 2048 -validity 10000 \
-              -alias profitride -storepass "$KEYSTORE_PASSWORD" -keypass "$KEYSTORE_PASSWORD" \
-              -dname "CN=ProfitRide, OU=Dev, O=ProfitRide, L=Bucuresti, S=Bucuresti, C=RO"
-            base64 -w0 app/release.jks > app/keystore.b64
-            rm app/release.jks
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add app/keystore.b64
-            git commit -m "Auto: keystore persistent"
-            git push
-            base64 -d app/keystore.b64 > app/release.jks
-            echo "Keystore creat si salvat"
-          else
-            echo "Keystore existent - decodez..."
-            base64 -d app/keystore.b64 > app/release.jks
-          fi
-
-      - name: Create project files with Python
-        run: |
-          python3 - <<'PYEOF'
+          # ---------- PARTEA 1 ----------
           import os
 
           def w(p, t):
@@ -303,9 +245,7 @@ jobs:
                   <TextView android:text="Ghid Honor" android:textSize="18sp" android:textStyle="bold" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
               </LinearLayout>
           </ScrollView>
-          ''')
-
-          # ---------- KOTLIN ----------
+          ''')          # ---------- PARTEA 2 ----------
           w('app/src/main/java/ro/profitride/App.kt', r'''
           package ro.profitride
           import android.app.Application
@@ -344,10 +284,14 @@ jobs:
 
               fun parse(text: String, avgSpeed: Float = 25f): Offer? {
                   return try {
-                      val price = findPrice(text) ?: return null
-                      val kms = KM_RE.findAll(text).mapNotNull { it.groupValues[1].replace(',', '.').toFloatOrNull() }.toList()
-                      val mins = MIN_RE.findAll(text).mapNotNull { it.groupValues[1].toIntOrNull() }.toList()
+                      val kmMatches = KM_RE.findAll(text).toList()
+                      val kms = kmMatches.mapNotNull { it.groupValues[1].replace(',', '.').toFloatOrNull() }
                       if (kms.isEmpty()) return null
+                      val minMatches = MIN_RE.findAll(text).toList()
+                      val mins = minMatches.mapNotNull { it.groupValues[1].toIntOrNull() }
+                      // ancora: pozitia primei mentiuni de "km" - pretul real e langa ea, nu oriunde pe ecran
+                      val anchor = kmMatches.first().range.first
+                      val price = findPrice(text, anchor) ?: return null
                       var pk = 0f; var tk = 0f
                       if (kms.size >= 2) { pk = kms[0]; tk = kms[1] } else tk = kms[0]
                       var pm = 0; var tm = 0
@@ -358,14 +302,23 @@ jobs:
                   } catch (_: Throwable) { null }
               }
 
-              private fun findPrice(text: String): Float? {
-                  val lbl = PRICE_LBL.findAll(text).mapNotNull { it.groupValues[1].replace(',', '.').toFloatOrNull() }.filter { it in 3f..2000f }.maxOrNull()
-                  if (lbl != null) return lbl
+              private fun findPrice(text: String, anchor: Int): Float? {
+                  // alege pretul cel mai apropiat de zona km/min a ofertei, nu valoarea maxima de pe tot ecranul
+                  // (evita sa confunde pretul cursei cu alte sume afisate pe ecran, ex. castig total pe zi)
+                  val labeled = PRICE_LBL.findAll(text).mapNotNull { m ->
+                      val v = m.groupValues[1].replace(',', '.').toFloatOrNull() ?: return@mapNotNull null
+                      if (v !in 3f..2000f) return@mapNotNull null
+                      Pair(v, m.range.first)
+                  }.toList()
+                  if (labeled.isNotEmpty()) {
+                      return labeled.minByOrNull { Math.abs(it.second - anchor) }?.first
+                  }
                   return PRICE_ANY.findAll(text).mapNotNull { m ->
                       val v = m.groupValues[1]
                       val after = text.substring(m.range.last + 1).take(10).lowercase()
-                      if (after.contains("km") || after.contains("min") || after.contains("ron")) null else v.replace(',', '.').toFloatOrNull()
-                  }.filter { it in 5f..500f }.maxOrNull()
+                      if (after.contains("km") || after.contains("min") || after.contains("ron")) null
+                      else v.replace(',', '.').toFloatOrNull()?.let { Pair(it, m.range.first) }
+                  }.filter { it.first in 5f..500f }.minByOrNull { Math.abs(it.second - anchor) }?.first
               }
           }
           ''')
@@ -775,8 +728,7 @@ jobs:
 
               override fun onDestroy() { handler.removeCallbacks(calcRunnable); super.onDestroy() }
           }
-          ''')
-
+          ''')          # ---------- PARTEA 3 ----------
           w('app/src/main/java/ro/profitride/SummaryActivity.kt', r'''
           package ro.profitride
           import android.app.AlertDialog
@@ -1288,8 +1240,7 @@ jobs:
           class SetupActivity : AppCompatActivity() {
               override fun onCreate(b: Bundle?) { super.onCreate(b); setContentView(R.layout.activity_setup) }
           }
-          ''')
-
+          ''')          # ---------- PARTEA 4 ----------
           w('app/src/main/java/ro/profitride/OfferReader.kt', r'''
           package ro.profitride
 
@@ -1394,12 +1345,12 @@ jobs:
                       val pkg = event.packageName?.toString()?.lowercase() ?: return
                       if (!isOfficial(pkg)) return
 
-                      // Salvare la apasarea Accept
+                      // Salvare la apasarea Accept / Confirm
                       if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
                           val t = "${event.text?.joinToString(" ") ?: ""} ${event.source?.text ?: ""} ${event.source?.contentDescription ?: ""}".lowercase()
                           val now0 = System.currentTimeMillis()
                           val o = pendingOffer
-                          if (t.contains("accept") && o != null && now0 - pendingAt < STALE_PENDING_MS) {
+                          if ((t.contains("accept") || t.contains("confirm")) && o != null && now0 - pendingAt < STALE_PENDING_MS) {
                               log("ACCEPT CLICK")
                               saveTrip(o.priceRon, o.pickupKm, o.tripKm, now0)
                               lastSavedPrice = o.priceRon; lastSavedKm = o.pickupKm + o.tripKm; lastSavedAt = now0
@@ -1408,8 +1359,12 @@ jobs:
                           return
                       }
 
-                      val root = rootInActiveWindow ?: return
-                      sb.setLength(0); collect(root, sb, 0)
+                      sb.setLength(0)
+                      val roots = ArrayList<AccessibilityNodeInfo>()
+                      try { windows?.forEach { w -> w.root?.let { r -> if (r.packageName?.toString()?.lowercase()?.let { isOfficial(it) } == true) roots.add(r) } } } catch (_: Throwable) {}
+                      if (roots.isEmpty()) { rootInActiveWindow?.let { roots.add(it) } }
+                      if (roots.isEmpty()) return
+                      for (r in roots) collect(r, sb, 0)
                       val raw = sb.toString().lowercase()
                       if (raw.isEmpty()) return
                       val h = raw.hashCode()
@@ -1417,8 +1372,17 @@ jobs:
                       if (h == lastTextHash && now - lastTextTime < HASH_MS) return
                       lastTextHash = h; lastTextTime = now
 
-                      if (raw.contains("accept")) {
+                      val navMarkers = raw.contains("navighează") || raw.contains("navigheaza") ||
+                          raw.contains("recalculeaz") || raw.contains("ieșirea") || raw.contains("iesirea") ||
+                          raw.contains("limita") || raw.contains("limită") || raw.contains("se caută curse") ||
+                          raw.contains("se cauta curse")
+                      val hasAcceptConfirm = raw.contains("accept") || raw.contains("confirm") || raw.contains("selecteaz")
+                      val looksOffer = !navMarkers && (hasAcceptConfirm ||
+                          (raw.contains("km") && raw.contains("min") && (raw.contains("ron") || raw.contains("lei")) && raw.length < 700))
+                      if (!looksOffer && raw.contains("km")) log("SCREEN $pkg: " + raw.replace('\n', '|').take(300))
+                      if (looksOffer) {
                           val offer = OfferParser.parse(raw, avgSpeed())
+                          if (offer == null) log("NEPARSAT $pkg: " + raw.replace('\n', '|').take(300))
                           if (offer != null) {
                               val key = "${offer.priceRon}|${offer.pickupKm}|${offer.tripKm}"
                               val justSaved = Math.abs(offer.priceRon - lastSavedPrice) < 0.05f &&
@@ -1644,4 +1608,32 @@ jobs:
                   return try {
                       val t = Trips.readAll(this).first.lastOrNull() ?: return "Nicio cursa."
                       val st = Trips.stats(this, "DAY")
-    
+                      "Ultima:\nTarif: ${"%.2f".format(t.price)} RON\nKm: ${"%.1f".format(t.pk + t.tk)}\nRON/km: ${"%.2f".format(t.gross)}\nNet: ${"%.2f".format(t.net)}\n--\nAzi: ${"%.0f".format(st.netAfterFixed)} RON (${st.count} curse)"
+                  } catch (_: Exception) { "Nicio cursa." }
+              }
+
+              private fun removeSidePanel() { try { sidePanelView?.let { wm.removeView(it) } } catch (_: Throwable) {}; sidePanelView = null }
+              private fun removeSideBar() { try { sideBarView?.let { wm.removeView(it) } } catch (_: Throwable) {}; sideBarView = null }
+
+              override fun onInterrupt() { removeOverlay(); removeSideBar(); removeSidePanel() }
+              override fun onDestroy() {
+                  instance = null
+                  removeOverlay(); removeSideBar(); removeSidePanel()
+                  try { unregisterReceiver(screenOff) } catch (_: Throwable) {}
+                  try { tts?.stop(); tts?.shutdown() } catch (_: Throwable) {}
+                  tts = null; super.onDestroy()
+              }
+          }
+          ''')
+          PYEOF
+
+      - name: Build debug APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProfitRide-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
