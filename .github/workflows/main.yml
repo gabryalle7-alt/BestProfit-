@@ -1285,7 +1285,7 @@ jobs:
           class SetupActivity : AppCompatActivity() {
               override fun onCreate(b: Bundle?) { super.onCreate(b); setContentView(R.layout.activity_setup) }
           }
-          ''')            # ---------- PARTEA 4 ----------
+          ''')          # ---------- PARTEA 4 ----------
           w('app/src/main/java/ro/profitride/OfferReader.kt', r'''
           package ro.profitride
 
@@ -1417,7 +1417,13 @@ jobs:
                       if (h == lastTextHash && now - lastTextTime < HASH_MS) return
                       lastTextHash = h; lastTextTime = now
 
-                      val looksOffer = raw.contains("accept") || raw.contains("confirm") || raw.contains("selecteaz") || (raw.contains("km") && raw.contains("min") && (raw.contains("ron") || raw.contains("lei")))
+                      val navMarkers = raw.contains("navighează") || raw.contains("navigheaza") ||
+                          raw.contains("recalculeaz") || raw.contains("ieșirea") || raw.contains("iesirea") ||
+                          raw.contains("limita") || raw.contains("limită") || raw.contains("se caută curse") ||
+                          raw.contains("se cauta curse")
+                      val hasAcceptConfirm = raw.contains("accept") || raw.contains("confirm") || raw.contains("selecteaz")
+                      val looksOffer = !navMarkers && (hasAcceptConfirm ||
+                          (raw.contains("km") && raw.contains("min") && (raw.contains("ron") || raw.contains("lei")) && raw.length < 700))
                       if (!looksOffer && raw.contains("km")) log("SCREEN $pkg: " + raw.replace('\n', '|').take(300))
                       if (looksOffer) {
                           val offer = OfferParser.parse(raw, avgSpeed())
@@ -1675,5 +1681,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ProfitRide-APK
-          path: app/build/outputs/apk/debug/app-debug.apk       
-          
+          path: app/build/outputs/apk/debug/app-debug.apk
+                      
+              
