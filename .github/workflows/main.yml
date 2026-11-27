@@ -1,4 +1,4 @@
-
+import os
 
 def w(p, t):
     d = os.path.dirname(p)
@@ -248,7 +248,9 @@ w('app/src/main/res/layout/activity_setup.xml', '''
         <TextView android:text="Ghid Honor" android:textSize="18sp" android:textStyle="bold" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
     </LinearLayout>
 </ScrollView>
-''')# ---------- PARTEA 2 ----------
+''')
+
+# ---------- KOTLIN - PARTEA 1 ----------
 w('app/src/main/java/ro/profitride/App.kt', r'''
 package ro.profitride
 import android.app.Application
@@ -275,14 +277,12 @@ class App : Application() {
 }
 ''')
 
-# ---------- FIX MAJOR: OfferParser complet rescris ----------
 w('app/src/main/java/ro/profitride/OfferParser.kt', r'''
 package ro.profitride
 
 object OfferParser {
     data class Offer(val priceRon: Float, val pickupKm: Float, val tripKm: Float, val pickupMinutes: Int, val tripMinutes: Int)
 
-    // DOAR preturi urmate explicit de RON / lei. Fara PRICE_ANY!
     private val PRICE_LBL = Regex("""(\d+(?:[.,]\d{1,2})?)\s*(?:RON|lei)""", RegexOption.IGNORE_CASE)
     private val KM_RE = Regex("""(\d+(?:[.,]\d+)?)\s*km""", RegexOption.IGNORE_CASE)
     private val MIN_RE = Regex("""(\d+)\s*(?:de\s*)?min""", RegexOption.IGNORE_CASE)
@@ -290,12 +290,10 @@ object OfferParser {
     fun parse(text: String, avgSpeed: Float = 25f): Offer? {
         return try {
             val low = text.lowercase()
-            // FILTRU DUR: fara buton de accept/confirm/decline/selecteaza -> nu e oferta
             val hasAccept = low.contains("accept") || low.contains("confirm") ||
                             low.contains("selecteaz") || low.contains("decline")
             if (!hasAccept) return null
 
-            // Toate preturile valide (4..500 RON) cu pozitie
             val priceAll = PRICE_LBL.findAll(text).mapNotNull { m ->
                 val v = m.groupValues[1].replace(',', '.').toFloatOrNull() ?: return@mapNotNull null
                 if (v !in 4f..500f) return@mapNotNull null
@@ -303,7 +301,6 @@ object OfferParser {
             }.toList()
             if (priceAll.isEmpty()) return null
 
-            // Toate km valizi (0.3..80) cu pozitie
             val kmAll = KM_RE.findAll(text).mapNotNull { m ->
                 val v = m.groupValues[1].replace(',', '.').toFloatOrNull() ?: return@mapNotNull null
                 if (v !in 0.3f..80f) return@mapNotNull null
@@ -311,14 +308,12 @@ object OfferParser {
             }.toList()
             if (kmAll.isEmpty()) return null
 
-            // Toate minutele valide (1..180) cu pozitie
             val minAll = MIN_RE.findAll(text).mapNotNull { m ->
                 val v = m.groupValues[1].toIntOrNull() ?: return@mapNotNull null
                 if (v !in 1..180) return@mapNotNull null
                 Triple(v, m.range.first, m.range.last)
             }.toList()
 
-            // Cauta clusterul (pret + km + min) cu distanta minima si validare semantica
             var bestP: Float? = null
             var bestK: Float? = null
             var bestM: Int? = null
@@ -328,12 +323,10 @@ object OfferParser {
                 for (k in kmAll) {
                     val dPK = Math.abs(p.second - k.second)
                     if (dPK > 300) continue
-                    // Validare RON/km
                     val ronPerKm = p.first / k.first
                     if (ronPerKm < 1f || ronPerKm > 30f) continue
 
                     if (minAll.isEmpty()) {
-                        // fallback: nu avem minute -> estimam din km
                         val score = dPK
                         if (score < bestScore) {
                             bestScore = score; bestP = p.first; bestK = k.first; bestM = null
@@ -342,7 +335,6 @@ object OfferParser {
                         for (m in minAll) {
                             val dPM = Math.abs(p.second - m.second)
                             if (dPM > 300) continue
-                            // Validare RON/oră (folosim minutele doar pentru cursa principala)
                             val ronPerHour = p.first / (m.first / 60f)
                             if (ronPerHour < 15f || ronPerHour > 400f) continue
 
@@ -359,7 +351,6 @@ object OfferParser {
             val tripKm = bestK ?: return null
             val tripMin = bestM
 
-            // Alege pickup: cauta un al doilea km apropiat de cel principal
             var pickupKm = 0f
             var pickupMin = 0
             for (k in kmAll) {
@@ -379,7 +370,6 @@ object OfferParser {
                 }
             }
 
-            // Fallback timpi estimati
             val finalTripMin = tripMin ?: ((tripKm / avgSpeed) * 60).toInt()
             if (pickupMin == 0 && pickupKm > 0f) pickupMin = ((pickupKm / avgSpeed) * 60).toInt()
 
@@ -596,8 +586,7 @@ class BarChartView @JvmOverloads constructor(context: Context, attrs: AttributeS
         } catch (_: Throwable) {}
     }
 }
-''')
-
+''')# ---------- KOTLIN - PARTEA 2 ----------
 w('app/src/main/java/ro/profitride/MainActivity.kt', r'''
 package ro.profitride
 import android.Manifest
@@ -794,7 +783,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() { handler.removeCallbacks(calcRunnable); super.onDestroy() }
 }
-''')# ---------- PARTEA 3 ----------
+''')
+
 w('app/src/main/java/ro/profitride/SummaryActivity.kt', r'''
 package ro.profitride
 import android.app.AlertDialog
@@ -1306,7 +1296,8 @@ import androidx.appcompat.app.AppCompatActivity
 class SetupActivity : AppCompatActivity() {
     override fun onCreate(b: Bundle?) { super.onCreate(b); setContentView(R.layout.activity_setup) }
 }
-''')# ---------- PARTEA 4 ----------
+''')
+
 w('app/src/main/java/ro/profitride/OfferReader.kt', r'''
 package ro.profitride
 
@@ -1414,14 +1405,12 @@ class OfferReader : AccessibilityService() {
             val pkg = event.packageName?.toString()?.lowercase() ?: return
             if (!isOfficial(pkg)) return
 
-            // Salvarea la apasarea Accept / Confirm
             if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
                 val t = "${event.text?.joinToString(" ") ?: ""} ${event.source?.text ?: ""} ${event.source?.contentDescription ?: ""}".lowercase()
                 val now0 = System.currentTimeMillis()
                 val o = pendingOffer
                 if ((t.contains("accept") || t.contains("confirm")) && o != null && now0 - pendingAt < STALE_PENDING_MS) {
                     log("ACCEPT CLICK")
-                    // Opreste timeout-ul de reject ca sa nu dubleze
                     rejectRunnable?.let { handler.removeCallbacks(it) }
                     rejectRunnable = null
                     saveTrip(o.priceRon, o.pickupKm, o.tripKm, now0)
@@ -1449,10 +1438,8 @@ class OfferReader : AccessibilityService() {
                 raw.contains("limita") || raw.contains("limită") || raw.contains("se caută curse") ||
                 raw.contains("se cauta curse")
             val hasAcceptConfirm = raw.contains("accept") || raw.contains("confirm") || raw.contains("selecteaz") || raw.contains("decline")
-            // FILTRU DUR: fara accept/confirm NU e oferta
             val looksOffer = !navMarkers && hasAcceptConfirm && raw.contains("km") && raw.contains("min")
 
-            // Logheaza screen doar daca e oferta sau la interval mare (throttle)
             if (looksOffer || now - lastScreenLogAt > SCREEN_LOG_THROTTLE_MS) {
                 lastScreenLogAt = now
                 if (looksOffer || raw.contains("km")) {
@@ -1471,7 +1458,6 @@ class OfferReader : AccessibilityService() {
                     if (!justSaved && (key != lastOfferKey || now - lastOfferAt > REOFFER_MS)) {
                         val old = pendingOffer
                         if (old != null && key != lastOfferKey) saveRejected(old)
-                        // Opreste reject-ul vechi inainte de a-l programa pe cel nou
                         rejectRunnable?.let { handler.removeCallbacks(it) }
                         lastOfferKey = key; lastOfferAt = now
                         pendingOffer = offer; pendingAt = now
@@ -1611,7 +1597,6 @@ class OfferReader : AccessibilityService() {
             val t = if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
             val p = WindowManager.LayoutParams(dp(320), WindowManager.LayoutParams.WRAP_CONTENT, t, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT)
             p.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; p.y = dp(90)
-            // IMPORTANT: tag INAINTE de addView
             c.tag = p
             wm.addView(c, p); overlay = c
             handler.postDelayed(autoDismiss, 25_000L)
