@@ -20,14 +20,14 @@ jobs:
         java-version: '17'
 
     - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      uses: android-actions/setup-android@v4
+      with:
+        packages: 'platform-tools'
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
 
     - name: Generate project files
-      env:
-        ANDROID_HOME: ${{ env.ANDROID_HOME }}
       run: python3 main.py
 
     - name: Build debug APK
