@@ -1,1 +1,1704 @@
-make
+import os
+
+def w(p, t):
+    d = os.path.dirname(p)
+    if d: os.makedirs(d, exist_ok=True)
+    open(p, 'w', encoding='utf-8').write(t.strip() + '\n')
+
+NS = 'xmlns:android="http://schemas.android.com/apk/res/android"'
+LP = 'android:layout_width="match_parent" android:layout_height="wrap_content"'
+CARD = 'android:background="@drawable/card_bg" android:elevation="4dp" android:outlineProvider="background"'
+
+def card(eid, label, hint='0.0', inp='numberDecimal', extra=''):
+    return (f'<LinearLayout android:orientation="vertical" {LP} {CARD} android:padding="14dp" android:layout_marginBottom="10dp">'
+            f'<TextView android:text="{label}" android:textColor="@color/text_secondary" android:textSize="12sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>'
+            f'<EditText android:id="@+id/{eid}" {extra} android:inputType="{inp}" android:hint="{hint}" android:textColor="@color/text_primary" android:textColorHint="@color/text_secondary" android:textSize="18sp" android:textStyle="bold" android:background="@null" {LP}/></LinearLayout>')
+
+def btn(bid, text, color, top=8):
+    return (f'<Button android:id="@+id/{bid}" android:text="{text}" android:background="@drawable/rounded_btn" android:backgroundTint="{color}" '
+            f'android:textColor="#FFFFFF" android:textStyle="bold" android:elevation="4dp" android:layout_marginTop="{top}dp" {LP}/>')
+
+def rowbtn(bid, text, color):
+    return (f'<Button android:id="@+id/{bid}" android:text="{text}" android:background="@drawable/rounded_btn" android:backgroundTint="{color}" '
+            f'android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="12sp" android:layout_margin="2dp" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>')
+
+def goalcard(a, b, c, margin='16dp'):
+    return (f'<LinearLayout android:orientation="vertical" {LP} {CARD} android:padding="14dp" android:layout_marginBottom="10dp" android:layout_margin="{margin}">'
+            f'<TextView android:id="@+id/{a}" android:text="Azi" android:textColor="@color/text_primary" android:textSize="15sp" android:textStyle="bold" {LP}/>'
+            f'<ProgressBar android:id="@+id/{b}" style="?android:attr/progressBarStyleHorizontal" android:max="100" android:progress="0" android:layout_marginTop="8dp" android:layout_width="match_parent" android:layout_height="12dp"/>'
+            f'<TextView android:id="@+id/{c}" android:text="" android:textColor="@color/text_secondary" android:textSize="12sp" android:layout_marginTop="6dp" {LP}/></LinearLayout>')
+
+def stat(vid, label):
+    return (f'<LinearLayout android:orientation="vertical" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_margin="4dp" {CARD} android:padding="10dp">'
+            f'<TextView android:text="{label}" android:textColor="@color/text_secondary" android:textSize="11sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>'
+            f'<TextView android:id="@+id/{vid}" android:text="-" android:textColor="@color/text_primary" android:textSize="20sp" android:textStyle="bold" android:layout_width="wrap_content" android:layout_height="wrap_content"/></LinearLayout>')
+
+def head(txt, tid):
+    return f'<TextView android:id="@+id/{tid}" android:text="{txt}" android:textSize="22sp" android:textStyle="bold" android:textColor="@color/text_primary" android:layout_marginBottom="12dp" {LP}/>'
+
+w('README.md', '# ProfitRide')
+w('local.properties', 'sdk.dir=' + os.environ['ANDROID_HOME'])
+w('gradle.properties', 'android.useAndroidX=true\norg.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8')
+w('settings.gradle', '''
+pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories { google(); mavenCentral() }
+}
+rootProject.name = "ProfitRide"
+include ':app'
+''')
+w('build.gradle', '''
+plugins {
+    id 'com.android.application' version '8.2.2' apply false
+    id 'org.jetbrains.kotlin.android' version '1.9.22' apply false
+}
+''')
+w('app/build.gradle', '''
+plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
+def ksPwd = System.getenv("KEYSTORE_PASSWORD")
+if (!ksPwd) throw new GradleException("Missing secret KEYSTORE_PASSWORD")
+android {
+    namespace 'ro.profitride'
+    compileSdk 34
+    defaultConfig { applicationId "ro.profitride"; minSdk 24; targetSdk 34; versionCode 34; versionName "5.1" }
+    signingConfigs { release { 
+        def ks = rootProject.file("release.jks")
+        if (!ks.exists()) throw new GradleException("Lipsește release.jks în rădăcină")
+        storeFile ks; storePassword ksPwd; keyAlias "profitride"; keyPassword ksPwd 
+    } }
+    buildTypes { release { signingConfig signingConfigs.release; minifyEnabled false }; debug { signingConfig signingConfigs.release } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    kotlinOptions { jvmTarget = '17' }
+}
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.work:work-runtime-ktx:2.9.0'
+}
+''')
+
+w('app/src/main/AndroidManifest.xml', '''
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <queries><intent><action android:name="android.intent.action.TTS_SERVICE"/></intent></queries>
+    <application android:name=".App" android:allowBackup="true" android:icon="@drawable/ic_car" android:label="ProfitRide"
+        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity>
+        <activity android:name=".SettingsActivity"/>
+        <activity android:name=".SetupActivity"/>
+        <activity android:name=".SummaryActivity"/>
+        <activity android:name=".TripsActivity"/>
+        <activity android:name=".FuelActivity"/>
+        <activity android:name=".VehicleActivity"/>
+        <service android:name=".OfferReader" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService"/></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service_config"/>
+        </service>
+    </application>
+</manifest>
+''')
+
+w('app/src/main/res/drawable/ic_car.xml', '''
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#000000" android:pathData="M0,0h108v108h-108z"/>
+    <path android:strokeColor="#FF1744" android:strokeWidth="11" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000" android:pathData="M48,24 L48,84 M48,24 L68,24 Q84,24 84,39 Q84,54 68,54 L48,54 M65,54 L84,84"/>
+    <path android:strokeColor="#FF1744" android:strokeWidth="11" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000" android:pathData="M22,24 L22,84 M22,24 L44,24 Q60,24 60,39 Q60,54 44,54 L22,54"/>
+</vector>
+''')
+
+w('app/src/main/res/xml/accessibility_service_config.xml', '''
+<?xml version="1.0" encoding="utf-8"?>
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeAllMask" android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows"
+    android:canRetrieveWindowContent="true" android:notificationTimeout="300"
+    android:description="@string/acc_desc"/>
+''')
+
+w('app/src/main/res/values/strings.xml', '''
+<resources>
+    <string name="app_name">ProfitRide</string>
+    <string name="acc_desc">Citeste ofertele Bolt/Uber</string>
+</resources>
+''')
+
+w('app/src/main/res/values/colors.xml', '''
+<resources>
+    <color name="bg_start">#E3F2FD</color>
+    <color name="bg_end">#FFFFFF</color>
+    <color name="card">#FFFFFF</color>
+    <color name="text_primary">#222222</color>
+    <color name="text_secondary">#757575</color>
+</resources>
+''')
+w('app/src/main/res/values-night/colors.xml', '''
+<resources>
+    <color name="bg_start">#0D1B2A</color>
+    <color name="bg_end">#121212</color>
+    <color name="card">#1E1E1E</color>
+    <color name="text_primary">#F2F2F2</color>
+    <color name="text_secondary">#A0A0A0</color>
+</resources>
+''')
+
+w('app/src/main/res/drawable/bg_gradient.xml', '''
+<shape xmlns:android="http://schemas.android.com/apk/res/android"><gradient android:startColor="@color/bg_start" android:endColor="@color/bg_end" android:angle="270" /></shape>
+''')
+w('app/src/main/res/drawable/card_bg.xml', '''
+<shape xmlns:android="http://schemas.android.com/apk/res/android"><solid android:color="@color/card"/><corners android:radius="16dp"/></shape>
+''')
+w('app/src/main/res/drawable/rounded_btn.xml', '''
+<shape xmlns:android="http://schemas.android.com/apk/res/android"><solid android:color="#FFFFFF"/><corners android:radius="30dp"/></shape>
+''')
+
+# ---------- LAYOUTS ----------
+status = '<TextView android:id="@+id/tvStatus" ' + LP + ' android:background="#111111" android:paddingTop="24dp" android:paddingBottom="24dp" android:gravity="center" android:textSize="22sp" android:textStyle="bold" android:textColor="#888888" android:elevation="8dp" android:text="Introdu datele cursei"/>'
+sumrow = ('<LinearLayout android:orientation="horizontal" android:layout_marginTop="8dp" ' + LP + '>'
+          + rowbtn('btnSumarZilnic', 'Zilnic', '#9C27B0') + rowbtn('btnSumarSaptamanal', 'Săpt.', '#4CAF50')
+          + rowbtn('btnSumarLunar', 'Lunar', '#FF9800') + rowbtn('btnSumarAnual', 'Anual', '#2196F3') + '</LinearLayout>')
+w('app/src/main/res/layout/activity_main.xml',
+  '<?xml version="1.0" encoding="utf-8"?>\n<ScrollView ' + NS + ' android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true" android:background="@drawable/bg_gradient">'
+  '<LinearLayout android:orientation="vertical" ' + LP + '>'
+  + status + goalcard('tvToday', 'pbGoal', 'tvGoalInfo')
+  + '<LinearLayout android:orientation="vertical" android:paddingLeft="16dp" android:paddingRight="16dp" android:paddingBottom="24dp" ' + LP + '>'
+  + card('etPickup', 'Km până la preluare') + card('etTrip', 'Km cursă') + card('etPrice', 'Tarif oferit (RON)')
+  + btn('btnCalc', 'CALCULEAZĂ', '#4CAF50', 4)
+  + '<TextView android:id="@+id/tvResult" android:layout_marginTop="12dp" android:background="#111111" android:padding="16dp" android:elevation="4dp" android:textSize="14sp" android:fontFamily="monospace" ' + LP + '/>'
+  + '<TextView android:text="Sumare" android:textStyle="bold" android:textSize="18sp" android:layout_marginTop="20dp" android:textColor="@color/text_primary" android:layout_width="wrap_content" android:layout_height="wrap_content"/>'
+  + sumrow
+  + btn('btnTrips', 'Curse de azi', '#009688', 12)
+  + btn('btnFuel', 'Alimentări și consum real', '#795548')
+  + btn('btnVehicle', 'Rubrică Autovehicul', '#E91E63')
+  + btn('btnSettings', 'Setări', '#2196F3')
+  + btn('btnAccessibility', 'Activează citirea', '#FF9800')
+  + btn('btnOverlay', 'Permite overlay', '#9C27B0')
+  + btn('btnDebug', 'Vezi log Debug', '#F44336')
+  + btn('btnStopAll', 'OPRIRE TOTALĂ', '#B71C1C', 20)
+  + '</LinearLayout></LinearLayout></ScrollView>')
+
+w('app/src/main/res/layout/activity_summary.xml',
+  '<?xml version="1.0" encoding="utf-8"?>\n<ScrollView ' + NS + ' android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/bg_gradient">'
+  '<LinearLayout android:orientation="vertical" android:padding="16dp" ' + LP + '>'
+  + head('Sumar', 'tvSummaryTitle')
+  + goalcard('tvSumGoal', 'pbSumGoal', 'tvSumGoalInfo', '0dp')
+  + '<LinearLayout android:orientation="horizontal" ' + LP + '>' + stat('tvStatRev', 'VENITURI') + stat('tvStatNet', 'PROFIT NET') + stat('tvStatHour', 'RON / ORĂ') + '</LinearLayout>'
+  + '<LinearLayout android:orientation="vertical" ' + LP + ' ' + CARD + ' android:padding="12dp" android:layout_marginTop="6dp" android:layout_marginBottom="10dp">'
+    '<TextView android:id="@+id/tvChartTitle" android:text="Profit net" android:textColor="@color/text_secondary" android:textSize="12sp" ' + LP + '/>'
+    '<ro.profitride.BarChartView android:id="@+id/chart" android:layout_width="match_parent" android:layout_height="170dp"/></LinearLayout>'
+  + '<TextView android:id="@+id/tvSummaryContent" android:textSize="14sp" android:textColor="@color/text_primary" android:fontFamily="monospace" ' + CARD + ' android:padding="16dp" android:lineSpacingExtra="4dp" ' + LP + '/>'
+  + btn('btnTrips', 'Lista curselor', '#009688', 14)
+  + btn('btnExport', 'Export / backup CSV', '#2196F3')
+  + btn('btnDeleteLast', 'Șterge ultima cursă', '#FF9800')
+  + btn('btnResetSummary', 'RESETEAZĂ', '#F44336')
+  + '</LinearLayout></ScrollView>')
+
+w('app/src/main/res/layout/activity_trips.xml',
+  '<?xml version="1.0" encoding="utf-8"?>\n<LinearLayout ' + NS + ' android:orientation="vertical" android:padding="16dp" android:background="@drawable/bg_gradient" android:layout_width="match_parent" android:layout_height="match_parent">'
+  + head('Curse', 'tvTripsTitle')
+  + '<TextView android:text="Atinge o cursă ca să o ștergi" android:textColor="@color/text_secondary" android:textSize="12sp" android:layout_marginBottom="8dp" ' + LP + '/>'
+  + '<TextView android:id="@+id/tvTripsEmpty" android:text="Nicio cursă în această perioadă." android:textColor="@color/text_primary" android:visibility="gone" ' + LP + '/>'
+  + '<ListView android:id="@+id/lvTrips" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:divider="@color/text_secondary" android:dividerHeight="1px"/>'
+  + '</LinearLayout>')
+
+w('app/src/main/res/layout/activity_fuel.xml',
+  '<?xml version="1.0" encoding="utf-8"?>\n<ScrollView ' + NS + ' android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/bg_gradient">'
+  '<LinearLayout android:orientation="vertical" android:padding="16dp" ' + LP + '>'
+  + head('Alimentări și consum real', 'tvFuelTitle')
+  + '<TextView android:text="Alimentează plin de fiecare dată și notează kilometrajul de la bord." android:textColor="@color/text_secondary" android:textSize="12sp" android:layout_marginBottom="10dp" ' + LP + '/>'
+  + card('etOdo', 'Kilometraj bord (km)') + card('etLiters', 'Litri alimentați') + card('etPriceL', 'Preț pe litru (RON)')
+  + btn('btnAddFuel', 'SALVEAZĂ ALIMENTAREA', '#4CAF50', 4)
+  + '<TextView android:id="@+id/tvFuelInfo" android:textSize="14sp" android:textColor="@color/text_primary" android:fontFamily="monospace" android:layout_marginTop="14dp" ' + CARD + ' android:padding="16dp" ' + LP + '/>'
+  + btn('btnApplyFuel', 'APLICĂ ÎN SETĂRI', '#2196F3', 14)
+  + btn('btnClearFuel', 'Șterge istoricul', '#F44336')
+  + '</LinearLayout></ScrollView>')
+
+veh = [('etRca', 'RCA'), ('etRcaPers', 'RCA Persoane'), ('etRcaBag', 'RCA Bagaje'), ('etItp', 'ITP'), ('etStingator', 'Stingător'),
+       ('etTrusa', 'Trusă Medicală'), ('etCopie', 'Copie Conformă'), ('etEcusoane', 'Ecusoane'), ('etFisa', 'Fișă Medicală')]
+vbody = ''.join(card(i, l, 'Alege data', 'none', 'android:focusable="false" android:clickable="true"') for i, l in veh)
+w('app/src/main/res/layout/activity_vehicle.xml',
+  '<?xml version="1.0" encoding="utf-8"?>\n<ScrollView ' + NS + ' android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/bg_gradient">'
+  '<LinearLayout android:orientation="vertical" android:padding="16dp" ' + LP + '>'
+  + head('Alerte Expirare', 'tvVehTitle') + vbody
+  + '<LinearLayout android:orientation="horizontal" android:layout_marginTop="16dp" ' + LP + '>' + rowbtn('btnSaveVehicle', 'SALVEAZĂ', '#4CAF50') + rowbtn('btnResetVehicle', 'RESET', '#F44336') + '</LinearLayout>'
+  + '</LinearLayout></ScrollView>')
+
+sets = [('etFuelPrice', 'Preț benzină (RON/L)'), ('etConsumption', 'Consum (L/100km)'), ('etCommission', 'Comision (%)'),
+        ('etExtraCost', 'Uzură (RON/km)'), ('etFixedDaily', 'Cheltuieli fixe (RON / zi lucrată)'), ('etGoal', 'Obiectiv zilnic net (RON)'),
+        ('etMinPerKm', 'Prag minim RON/km'), ('etMinPerHour', 'Prag minim RON/oră'), ('etLongPickup', 'Preluare lungă de la (km)'),
+        ('etMinPerKmLong', 'Prag RON/km pentru preluare lungă'), ('etAvgSpeed', 'Viteză medie (km/h)')]
+sbody = ''.join(card(i, l) for i, l in sets)
+w('app/src/main/res/layout/activity_settings.xml',
+  '<?xml version="1.0" encoding="utf-8"?>\n<ScrollView ' + NS + ' android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/bg_gradient">'
+  '<LinearLayout android:orientation="vertical" android:padding="16dp" ' + LP + '>'
+  + head('Setări', 'tvSetTitle') + sbody
+  + btn('btnTts', 'Anunț vocal', '#9C27B0', 6) + btn('btnTheme', 'Temă', '#607D8B')
+  + btn('btnSave', 'SALVEAZĂ', '#4CAF50', 16)
+  + '</LinearLayout></ScrollView>')
+
+w('app/src/main/res/layout/activity_setup.xml', '''
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent">
+    <LinearLayout android:orientation="vertical" android:padding="16dp" android:layout_width="match_parent" android:layout_height="wrap_content">
+        <TextView android:text="Ghid Honor" android:textSize="18sp" android:textStyle="bold" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+    </LinearLayout>
+</ScrollView>
+''')
+
+# ---------- KOTLIN - PARTEA 1 ----------
+w('app/src/main/java/ro/profitride/App.kt', r'''
+package ro.profitride
+import android.app.Application
+import android.content.Context
+import androidx.appcompat.app.AppCompatDelegate
+
+class App : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        applyTheme(this)
+    }
+    companion object {
+        fun applyTheme(ctx: Context) {
+            val m = ctx.getSharedPreferences("cfg", Context.MODE_PRIVATE).getInt("themeMode", 0)
+            AppCompatDelegate.setDefaultNightMode(
+                when (m) {
+                    1 -> AppCompatDelegate.MODE_NIGHT_NO
+                    2 -> AppCompatDelegate.MODE_NIGHT_YES
+                    else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+                }
+            )
+        }
+    }
+}
+''')
+
+w('app/src/main/java/ro/profitride/OfferParser.kt', r'''
+package ro.profitride
+
+object OfferParser {
+    data class Offer(val priceRon: Float, val pickupKm: Float, val tripKm: Float, val pickupMinutes: Int, val tripMinutes: Int)
+
+    private val PRICE_LBL = Regex("""(\d+(?:[.,]\d{1,2})?)\s*(?:RON|lei)""", RegexOption.IGNORE_CASE)
+    private val KM_RE = Regex("""(\d+(?:[.,]\d+)?)\s*km""", RegexOption.IGNORE_CASE)
+    private val MIN_RE = Regex("""(\d+)\s*(?:de\s*)?min""", RegexOption.IGNORE_CASE)
+
+    fun parse(text: String, avgSpeed: Float = 25f): Offer? {
+        return try {
+            val low = text.lowercase()
+            val hasAccept = low.contains("accept") || low.contains("confirm") ||
+                            low.contains("selecteaz") || low.contains("decline")
+            if (!hasAccept) return null
+
+            val priceAll = PRICE_LBL.findAll(text).mapNotNull { m ->
+                val v = m.groupValues[1].replace(',', '.').toFloatOrNull() ?: return@mapNotNull null
+                if (v !in 4f..500f) return@mapNotNull null
+                Triple(v, m.range.first, m.range.last)
+            }.toList()
+            if (priceAll.isEmpty()) return null
+
+            val kmAll = KM_RE.findAll(text).mapNotNull { m ->
+                val v = m.groupValues[1].replace(',', '.').toFloatOrNull() ?: return@mapNotNull null
+                if (v !in 0.3f..80f) return@mapNotNull null
+                Triple(v, m.range.first, m.range.last)
+            }.toList()
+            if (kmAll.isEmpty()) return null
+
+            val minAll = MIN_RE.findAll(text).mapNotNull { m ->
+                val v = m.groupValues[1].toIntOrNull() ?: return@mapNotNull null
+                if (v !in 1..180) return@mapNotNull null
+                Triple(v, m.range.first, m.range.last)
+            }.toList()
+
+            var bestP: Float? = null
+            var bestK: Float? = null
+            var bestM: Int? = null
+            var bestScore = Int.MAX_VALUE
+
+            for (p in priceAll) {
+                for (k in kmAll) {
+                    val dPK = Math.abs(p.second - k.second)
+                    if (dPK > 300) continue
+                    val ronPerKm = p.first / k.first
+                    if (ronPerKm < 1f || ronPerKm > 30f) continue
+
+                    if (minAll.isEmpty()) {
+                        val score = dPK
+                        if (score < bestScore) {
+                            bestScore = score; bestP = p.first; bestK = k.first; bestM = null
+                        }
+                    } else {
+                        for (m in minAll) {
+                            val dPM = Math.abs(p.second - m.second)
+                            if (dPM > 300) continue
+                            val ronPerHour = p.first / (m.first / 60f)
+                            if (ronPerHour < 15f || ronPerHour > 400f) continue
+
+                            val score = dPK + dPM
+                            if (score < bestScore) {
+                                bestScore = score; bestP = p.first; bestK = k.first; bestM = m.first
+                            }
+                        }
+                    }
+                }
+            }
+
+            val price = bestP ?: return null
+            val tripKm = bestK ?: return null
+            val tripMin = bestM
+
+            var pickupKm = 0f
+            var pickupMin = 0
+            for (k in kmAll) {
+                if (k.first == tripKm) continue
+                if (Math.abs(k.second - (kmAll.firstOrNull { it.first == tripKm }?.second ?: k.second)) < 250) {
+                    pickupKm = k.first
+                    break
+                }
+            }
+            if (pickupKm > 0f && minAll.isNotEmpty()) {
+                for (m in minAll) {
+                    if (tripMin != null && m.first == tripMin) continue
+                    if (Math.abs(m.second - (minAll.firstOrNull { it.first == tripMin }?.second ?: m.second)) < 250) {
+                        pickupMin = m.first
+                        break
+                    }
+                }
+            }
+
+            val finalTripMin = tripMin ?: ((tripKm / avgSpeed) * 60).toInt()
+            if (pickupMin == 0 && pickupKm > 0f) pickupMin = ((pickupKm / avgSpeed) * 60).toInt()
+
+            Offer(price, pickupKm, tripKm, pickupMin, finalTripMin)
+        } catch (_: Throwable) { null }
+    }
+}
+''')
+
+w('app/src/main/java/ro/profitride/Calc.kt', r'''
+package ro.profitride
+import android.content.Context
+import android.graphics.Color
+
+object Calc {
+    val GREEN = Color.parseColor("#4CAF50")
+    val YELLOW = Color.parseColor("#FFEB3B")
+    val RED = Color.parseColor("#FF5252")
+
+    data class Result(
+        val text: String, val color: Int, val label: String, val level: Int,
+        val grossPerKm: Float, val grossPerHour: Float, val netProfit: Float,
+        val totalExpenses: Float, val commissionCut: Float, val fuelCost: Float, val extraCost: Float,
+        val totalKm: Float, val totalMin: Int, val priceRon: Float, val speech: String, val longPickup: Boolean
+    )
+
+    fun compute(ctx: Context, o: OfferParser.Offer): Result {
+        val p = ctx.getSharedPreferences("cfg", Context.MODE_PRIVATE)
+        val fuel = p.getFloat("fuelPrice", 7.5f)
+        val cons = p.getFloat("consumption", 7f)
+        val com = p.getFloat("commission", 20f)
+        val extra = p.getFloat("extraCost", 0.5f)
+        val minKm = p.getFloat("minPerKm", 2.5f)
+        val minHour = p.getFloat("minPerHour", 60f)
+        val longPick = p.getFloat("longPickupKm", 4f)
+        val minKmLong = p.getFloat("minPerKmLong", 3f)
+
+        val totalKm = o.pickupKm + o.tripKm
+        val totalMin = o.pickupMinutes + o.tripMinutes
+        val grossKm = if (totalKm > 0f) o.priceRon / totalKm else 0f
+        val grossH = if (totalMin > 0) o.priceRon / (totalMin / 60f) else 0f
+        val comCut = o.priceRon * com / 100f
+        val fuelCost = totalKm / 100f * cons * fuel
+        val extraCost = totalKm * extra
+        val exp = comCut + fuelCost + extraCost
+        val net = o.priceRon - exp
+
+        val isLong = longPick > 0f && o.pickupKm >= longPick
+        val minEff = if (isLong) maxOf(minKm, minKmLong) else minKm
+        val lvKm = when { grossKm >= minEff * 1.2f -> 2; grossKm >= minEff -> 1; else -> 0 }
+        val lvH = if (totalMin <= 0 || minHour <= 0f) 2 else when { grossH >= minHour * 1.2f -> 2; grossH >= minHour -> 1; else -> 0 }
+        val level = minOf(lvKm, lvH)
+        val label = when (level) { 2 -> "PROFITABIL"; 1 -> "MEDIU"; else -> "NEPROFITABIL" }
+        val color = when (level) { 2 -> GREEN; 1 -> YELLOW; else -> RED }
+
+        val text = "[%s]\n%.2f RON/km\n%.1f km · %d min\n%.2f RON".format(label, grossKm, totalKm, totalMin, o.priceRon)
+        val speech = when (level) {
+            2 -> "Profitabil. %.1f lei pe km.".format(grossKm)
+            1 -> "Mediu."
+            else -> "Neprofitabil."
+        }
+        return Result(text, color, label, level, grossKm, grossH, net, exp, comCut, fuelCost, extraCost, totalKm, totalMin, o.priceRon, speech, isLong)
+    }
+}
+''')
+
+w('app/src/main/java/ro/profitride/Trips.kt', r'''
+package ro.profitride
+import android.content.Context
+import java.util.Calendar
+
+object Trips {
+    data class Trip(val line: Int, val ts: Long, val price: Float, val pk: Float, val tk: Float, val gross: Float,
+                    val min: Float, val exp: Float, val net: Float, val com: Float, val fuel: Float, val wear: Float)
+    data class Rej(val ts: Long, val price: Float, val km: Float, val net: Float, val good: Boolean)
+    data class Stats(val count: Int, val rev: Float, val net: Float, val fixed: Float, val netAfterFixed: Float,
+                     val km: Float, val min: Float, val revH: Float, val days: Int)
+
+    fun readAll(ctx: Context): Pair<List<Trip>, Int> {
+        val out = ArrayList<Trip>()
+        var bad = 0
+        try {
+            ctx.openFileInput("offers.csv").bufferedReader().useLines { lines ->
+                lines.forEachIndexed { i, raw ->
+                    val t = raw.trim()
+                    if (t.isEmpty()) return@forEachIndexed
+                    val p = t.split(",")
+                    val ts = p.getOrNull(0)?.toLongOrNull()
+                    if (p.size < 8 || ts == null) { bad++; return@forEachIndexed }
+                    fun f(k: Int): Float = p.getOrNull(k)?.toFloatOrNull() ?: 0f
+                    out.add(Trip(i, ts, f(1), f(2), f(3), f(4), f(5), f(6), f(7), f(8), f(9), f(10)))
+                }
+            }
+        } catch (_: Exception) {}
+        return Pair(out, bad)
+    }
+
+    fun deleteLine(ctx: Context, line: Int): Boolean {
+        return try {
+            val lines = ctx.openFileInput("offers.csv").bufferedReader().use { it.readLines() }.toMutableList()
+            if (line !in lines.indices) return false
+            lines.removeAt(line)
+            ctx.openFileOutput("offers.csv", Context.MODE_PRIVATE).bufferedWriter().use { w -> lines.forEach { w.appendLine(it) } }
+            true
+        } catch (_: Exception) { false }
+    }
+
+    fun readRejected(ctx: Context, since: Long): List<Rej> {
+        val out = ArrayList<Rej>()
+        try {
+            ctx.openFileInput("rejected.csv").bufferedReader().useLines { lines ->
+                lines.forEach { raw ->
+                    val p = raw.trim().split(",")
+                    val ts = p.getOrNull(0)?.toLongOrNull() ?: return@forEach
+                    if (p.size < 8 || ts < since) return@forEach
+                    out.add(Rej(ts, p[1].toFloatOrNull() ?: 0f, (p[2].toFloatOrNull() ?: 0f) + (p[3].toFloatOrNull() ?: 0f), p[6].toFloatOrNull() ?: 0f, p[7] == "1"))
+                }
+            }
+        } catch (_: Exception) {}
+        return out
+    }
+
+    fun startOf(period: String): Long {
+        val c = Calendar.getInstance()
+        c.set(Calendar.HOUR_OF_DAY, 0); c.set(Calendar.MINUTE, 0); c.set(Calendar.SECOND, 0); c.set(Calendar.MILLISECOND, 0)
+        when (period) {
+            "WEEK" -> c.set(Calendar.DAY_OF_WEEK, c.firstDayOfWeek)
+            "MONTH" -> c.set(Calendar.DAY_OF_MONTH, 1)
+            "YEAR" -> c.set(Calendar.DAY_OF_YEAR, 1)
+        }
+        return c.timeInMillis
+    }
+
+    fun effStart(ctx: Context, period: String): Long =
+        maxOf(startOf(period), ctx.getSharedPreferences("cfg", Context.MODE_PRIVATE).getLong("reset_$period", 0L))
+
+    fun dayKey(ts: Long): Int {
+        val c = Calendar.getInstance()
+        c.timeInMillis = ts
+        return c.get(Calendar.YEAR) * 1000 + c.get(Calendar.DAY_OF_YEAR)
+    }
+
+    fun stats(ctx: Context, period: String): Stats {
+        val eff = effStart(ctx, period)
+        val list = readAll(ctx).first.filter { it.ts >= eff }
+        val fixedDay = ctx.getSharedPreferences("cfg", Context.MODE_PRIVATE).getFloat("fixedDaily", 0f)
+        var rev = 0f; var net = 0f; var km = 0f; var min = 0f; var revH = 0f
+        for (t in list) {
+            rev += t.price; net += t.net; km += t.pk + t.tk
+            if (t.min > 0f) { min += t.min; revH += t.price }
+        }
+        val days = list.map { dayKey(it.ts) }.toSet().size
+        val fixed = fixedDay * days
+        return Stats(list.size, rev, net, fixed, net - fixed, km, min, revH, days)
+    }
+}
+''')
+
+w('app/src/main/java/ro/profitride/BarChartView.kt', r'''
+package ro.profitride
+import android.content.Context
+import android.content.res.Configuration
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.util.AttributeSet
+import android.view.View
+
+class BarChartView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
+    private var values: FloatArray = FloatArray(0)
+    private var labels: Array<String> = emptyArray()
+    private val barP = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val txtP = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
+    private val lineP = Paint().apply { strokeWidth = 2f }
+
+    fun setData(v: FloatArray, l: Array<String>) {
+        values = v; labels = l; invalidate()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        try {
+            val n = values.size
+            if (n == 0) return
+            val d = resources.displayMetrics.density
+            val w = width.toFloat(); val h = height.toFloat()
+            val top = 18f * d; val bottom = h - 20f * d
+            val maxV = maxOf(values.maxOrNull() ?: 0f, 1f)
+            val minV = minOf(values.minOrNull() ?: 0f, 0f)
+            val range = maxV - minV
+            val zeroY = bottom - (0f - minV) / range * (bottom - top)
+            val slot = w / n
+            val bw = slot * 0.6f
+            val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+            val fg = if (night) Color.parseColor("#DDDDDD") else Color.parseColor("#444444")
+            txtP.color = fg; lineP.color = fg
+            canvas.drawLine(0f, zeroY, w, zeroY, lineP)
+            for (i in 0 until n) {
+                val v = values[i]
+                val cx = slot * i + slot / 2
+                val y = bottom - (v - minV) / range * (bottom - top)
+                barP.color = if (v >= 0f) Calc.GREEN else Calc.RED
+                val t = minOf(y, zeroY)
+                val b = maxOf(maxOf(y, zeroY), t + 1f)
+                canvas.drawRect(cx - bw / 2, t, cx + bw / 2, b, barP)
+                txtP.textSize = 10f * d
+                val lb = labels.getOrNull(i) ?: ""
+                if (lb.isNotEmpty()) canvas.drawText(lb, cx, h - 4f * d, txtP)
+                if (n <= 12 && v != 0f) {
+                    txtP.textSize = 9f * d
+                    canvas.drawText("%.0f".format(v), cx, t - 3f * d, txtP)
+                }
+            }
+        } catch (_: Throwable) {}
+    }
+}
+''')# ---------- KOTLIN - PARTEA 2 ----------
+w('app/src/main/java/ro/profitride/MainActivity.kt', r'''
+package ro.profitride
+import android.Manifest
+import android.animation.ArgbEvaluator
+import android.animation.ValueAnimator
+import android.app.AlertDialog
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.res.ColorStateList
+import android.graphics.Color
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.MotionEvent
+import android.widget.Button
+import android.widget.EditText
+import android.widget.ProgressBar
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import java.util.concurrent.TimeUnit
+
+class MainActivity : AppCompatActivity() {
+    private var etPickup: EditText? = null
+    private var etTrip: EditText? = null
+    private var etPrice: EditText? = null
+    private var tvStatus: TextView? = null
+    private var tvResult: TextView? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private val calcRunnable = Runnable { safeCalculate() }
+
+    private val watcher = object : TextWatcher {
+        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+            handler.removeCallbacks(calcRunnable)
+            handler.postDelayed(calcRunnable, 250L)
+        }
+        override fun afterTextChanged(s: Editable?) {}
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        try { setContentView(R.layout.activity_main) } catch (e: Throwable) {
+            try { Toast.makeText(this, "Eroare: ${e.message}", Toast.LENGTH_LONG).show() } catch (_: Throwable) {}
+            finish(); return
+        }
+        try { initViews() } catch (e: Throwable) { logD("initViews: ${e.message}") }
+        try { initListeners() } catch (e: Throwable) { logD("initListeners: ${e.message}") }
+        handler.postDelayed({ try { requestNotifPermission() } catch (e: Throwable) { logD("notif: ${e.message}") } }, 500L)
+        handler.postDelayed({ Thread { try { initWorkManager() } catch (e: Throwable) { logD("wm: ${e.message}") } }.start() }, 1500L)
+    }
+
+    private fun logD(msg: String) {
+        try { openFileOutput("debug.txt", MODE_APPEND).bufferedWriter().use { it.appendLine("${System.currentTimeMillis()}: INIT $msg") } } catch (_: Throwable) {}
+    }
+
+    private fun requestNotifPermission() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
+    }
+
+    private fun initWorkManager() {
+        val wr = PeriodicWorkRequestBuilder<ExpiryWorker>(1, TimeUnit.DAYS).build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork("ExpiryCheck", ExistingPeriodicWorkPolicy.KEEP, wr)
+    }
+
+    private fun initViews() {
+        etPickup = findViewById(R.id.etPickup)
+        etTrip = findViewById(R.id.etTrip)
+        etPrice = findViewById(R.id.etPrice)
+        tvStatus = findViewById(R.id.tvStatus)
+        tvResult = findViewById(R.id.tvResult)
+        etPickup?.addTextChangedListener(watcher)
+        etTrip?.addTextChangedListener(watcher)
+        etPrice?.addTextChangedListener(watcher)
+    }
+
+    private fun open(c: Class<*>) { try { startActivity(Intent(this, c)) } catch (_: Exception) {} }
+
+    private fun initListeners() {
+        findViewById<Button>(R.id.btnCalc)?.setOnClickListener { safeCalculate() }
+        findViewById<Button>(R.id.btnSumarZilnic)?.setOnClickListener { sum("DAY") }
+        findViewById<Button>(R.id.btnSumarSaptamanal)?.setOnClickListener { sum("WEEK") }
+        findViewById<Button>(R.id.btnSumarLunar)?.setOnClickListener { sum("MONTH") }
+        findViewById<Button>(R.id.btnSumarAnual)?.setOnClickListener { sum("YEAR") }
+        findViewById<Button>(R.id.btnTrips)?.setOnClickListener {
+            try { startActivity(Intent(this, TripsActivity::class.java).putExtra("PERIOADA", "DAY")) } catch (_: Exception) {}
+        }
+        findViewById<Button>(R.id.btnFuel)?.setOnClickListener { open(FuelActivity::class.java) }
+        findViewById<Button>(R.id.btnVehicle)?.setOnClickListener { open(VehicleActivity::class.java) }
+        findViewById<Button>(R.id.btnSettings)?.setOnClickListener { open(SettingsActivity::class.java) }
+        findViewById<Button>(R.id.btnAccessibility)?.setOnClickListener {
+            try {
+                if (!Settings.canDrawOverlays(this)) Toast.makeText(this, "Acorda intai overlay", Toast.LENGTH_LONG).show()
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            } catch (_: Exception) {}
+        }
+        findViewById<Button>(R.id.btnOverlay)?.setOnClickListener {
+            try { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) } catch (_: Exception) {}
+        }
+        findViewById<Button>(R.id.btnDebug)?.setOnClickListener {
+            try {
+                val d = try { openFileInput("debug.txt").bufferedReader().use { it.readText() } } catch (e: Exception) { "Nu exista date." }
+                AlertDialog.Builder(this).setTitle("Log:").setMessage(d.takeLast(5000)).setPositiveButton("OK", null).show()
+            } catch (_: Exception) {}
+        }
+        findViewById<Button>(R.id.btnStopAll)?.setOnClickListener {
+            try {
+                AlertDialog.Builder(this).setTitle("Oprire").setMessage("Opresti serviciul?")
+                    .setPositiveButton("Da") { _, _ -> OfferReader.isStopped = true; finish() }
+                    .setNegativeButton("Nu", null).show()
+            } catch (_: Exception) {}
+        }
+        listOf(R.id.btnCalc, R.id.btnSumarZilnic, R.id.btnSumarSaptamanal, R.id.btnSumarLunar, R.id.btnSumarAnual,
+            R.id.btnTrips, R.id.btnFuel, R.id.btnVehicle, R.id.btnSettings, R.id.btnAccessibility,
+            R.id.btnOverlay, R.id.btnDebug, R.id.btnStopAll).forEach { id ->
+            findViewById<Button>(id)?.let { b ->
+                b.setOnTouchListener { v, e ->
+                    when (e.action) {
+                        MotionEvent.ACTION_DOWN -> v.animate().scaleX(0.96f).scaleY(0.96f).setDuration(100).start()
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
+                    }
+                    false
+                }
+            }
+        }
+    }
+
+    private fun sum(p: String) { try { startActivity(Intent(this, SummaryActivity::class.java).putExtra("PERIOADA", p)) } catch (_: Exception) {} }
+
+    override fun onResume() {
+        super.onResume()
+        try {
+            val wasStopped = OfferReader.isStopped
+            OfferReader.isStopped = false
+            if (wasStopped) OfferReader.instance?.showSideBar()
+        } catch (_: Exception) {}
+        refreshGoal()
+    }
+
+    private fun refreshGoal() {
+        try {
+            val goal = getSharedPreferences("cfg", MODE_PRIVATE).getFloat("goalDaily", 500f)
+            val s = Trips.stats(this, "DAY")
+            val pct = if (goal > 0f) s.netAfterFixed / goal * 100f else 0f
+            findViewById<TextView>(R.id.tvToday)?.text = "Azi: %.0f RON net · %d curse".format(s.netAfterFixed, s.count)
+            findViewById<ProgressBar>(R.id.pbGoal)?.let {
+                it.progress = pct.toInt().coerceIn(0, 100)
+                it.progressTintList = ColorStateList.valueOf(if (pct >= 100f) Calc.GREEN else Color.parseColor("#2196F3"))
+            }
+            findViewById<TextView>(R.id.tvGoalInfo)?.text =
+                if (goal <= 0f) "Setează un obiectiv zilnic în Setări"
+                else if (pct >= 100f) "Obiectiv atins!"
+                else "Mai ai %.0f RON până la obiectiv (%.0f RON)".format(goal - s.netAfterFixed, goal)
+        } catch (_: Exception) {}
+    }
+
+    private fun safeCalculate() {
+        try {
+            val pp = etPickup?.text?.toString()?.toFloatOrNull() ?: 0f
+            val t = etTrip?.text?.toString()?.toFloatOrNull() ?: 0f
+            val pr = etPrice?.text?.toString()?.toFloatOrNull() ?: 0f
+            if (pp == 0f && t == 0f && pr == 0f) {
+                tvStatus?.text = "Introdu datele cursei"
+                tvStatus?.setTextColor(Color.parseColor("#888888"))
+                tvStatus?.setBackgroundColor(Color.parseColor("#111111"))
+                tvResult?.text = ""
+                return
+            }
+            val r = Calc.compute(this, OfferParser.Offer(pr, pp, t, 0, 0))
+            tvStatus?.text = r.label
+            tvStatus?.setTextColor(Color.BLACK)
+            tvResult?.text = r.text
+            tvResult?.setTextColor(r.color)
+            val a = ValueAnimator.ofObject(ArgbEvaluator(), Color.parseColor("#111111"), r.color)
+            a.duration = 300
+            a.addUpdateListener { anim -> (anim.animatedValue as? Int)?.let { tvStatus?.setBackgroundColor(it) } }
+            a.start()
+        } catch (_: Exception) {}
+    }
+
+    override fun onDestroy() { handler.removeCallbacks(calcRunnable); super.onDestroy() }
+}
+''')
+
+w('app/src/main/java/ro/profitride/SummaryActivity.kt', r'''
+package ro.profitride
+import android.app.AlertDialog
+import android.content.Intent
+import android.content.SharedPreferences
+import android.content.res.ColorStateList
+import android.graphics.Color
+import android.os.Bundle
+import android.widget.Button
+import android.widget.ProgressBar
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
+
+class SummaryActivity : AppCompatActivity() {
+    private lateinit var period: String
+    private lateinit var prefs: SharedPreferences
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        try {
+            setContentView(R.layout.activity_summary)
+            period = intent.getStringExtra("PERIOADA") ?: "WEEK"
+            prefs = getSharedPreferences("cfg", MODE_PRIVATE)
+            findViewById<TextView>(R.id.tvSummaryTitle).text = when (period) {
+                "DAY" -> "Sumar zilnic"; "WEEK" -> "Sumar săptămânal"; "MONTH" -> "Sumar lunar"; "YEAR" -> "Sumar anual"; else -> "Sumar"
+            }
+            findViewById<Button>(R.id.btnTrips).setOnClickListener {
+                startActivity(Intent(this, TripsActivity::class.java).putExtra("PERIOADA", period))
+            }
+            findViewById<Button>(R.id.btnExport).setOnClickListener { export() }
+            findViewById<Button>(R.id.btnDeleteLast).setOnClickListener { deleteLast() }
+            findViewById<Button>(R.id.btnResetSummary).setOnClickListener {
+                AlertDialog.Builder(this).setTitle("Reset").setMessage("Ștergi datele din sumar?")
+                    .setPositiveButton("Da") { _, _ -> prefs.edit().putLong("reset_$period", System.currentTimeMillis()).apply(); load() }
+                    .setNegativeButton("Nu", null).show()
+            }
+        } catch (e: Exception) { finish() }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        try { load() } catch (_: Exception) {}
+    }
+
+    private fun load() {
+        val st = Trips.stats(this, period)
+        val (all, corrupt) = Trips.readAll(this)
+        val eff = Trips.effStart(this, period)
+        val list = all.filter { it.ts >= eff }
+        var com = 0f; var fuel = 0f; var wear = 0f; var exp = 0f
+        for (t in list) { com += t.com; fuel += t.fuel; wear += t.wear; exp += t.exp }
+        val avg = if (st.km > 0f) st.rev / st.km else 0f
+        val goal = prefs.getFloat("goalDaily", 500f)
+        val perDay = if (period == "DAY") st.netAfterFixed else if (st.days > 0) st.netAfterFixed / st.days else 0f
+        val pct = if (goal > 0f) perDay / goal * 100f else 0f
+
+        findViewById<TextView>(R.id.tvSumGoal).text =
+            if (period == "DAY") "Obiectiv azi: %.0f / %.0f RON".format(perDay, goal)
+            else "Medie pe zi lucrată: %.0f / %.0f RON".format(perDay, goal)
+        findViewById<ProgressBar>(R.id.pbSumGoal)?.let {
+            it.progress = pct.toInt().coerceIn(0, 100)
+            it.progressTintList = ColorStateList.valueOf(if (pct >= 100f) Calc.GREEN else Color.parseColor("#2196F3"))
+        }
+        findViewById<TextView>(R.id.tvSumGoalInfo).text = if (goal <= 0f) "Setează un obiectiv în Setări" else "%.0f%% din obiectiv".format(pct)
+
+        findViewById<TextView>(R.id.tvStatRev).text = "%.0f".format(st.rev)
+        findViewById<TextView>(R.id.tvStatNet).text = "%.0f".format(st.netAfterFixed)
+        findViewById<TextView>(R.id.tvStatHour).text = if (st.min > 0f) "%.0f".format(st.revH / (st.min / 60f)) else "-"
+
+        val rej = Trips.readRejected(this, eff)
+        val rejGood = rej.filter { it.good }
+        val missed = rejGood.sumOf { it.net.toDouble() }.toFloat()
+
+        val sb = StringBuilder()
+        sb.append("CURSE: ${list.size}   ZILE: ${st.days}\n")
+        sb.append("KM: ${"%.1f".format(st.km)}\n")
+        sb.append("Tarif mediu: ${"%.2f".format(avg)} RON/km\n")
+        if (st.min > 0f) sb.append("RON/oră: ${"%.2f".format(st.revH / (st.min / 60f))}\n")
+        sb.append("----------\nCHELTUIELI\n")
+        sb.append("Comision: ${"%.2f".format(com)}\n")
+        sb.append("Combustibil: ${"%.2f".format(fuel)}\n")
+        sb.append("Uzură: ${"%.2f".format(wear)}\n")
+        sb.append("Fixe: ${"%.2f".format(st.fixed)}\n")
+        sb.append("Total: ${"%.2f".format(exp + st.fixed)} RON\n")
+        sb.append("----------\n")
+        sb.append("PROFIT NET: ${"%.2f".format(st.netAfterFixed)} RON\n")
+        sb.append("----------\n")
+        sb.append("OFERTE REFUZATE: ${rej.size}\n")
+        sb.append("Bune ratate: ${rejGood.size} (~${"%.0f".format(missed)} RON net)")
+        if (corrupt > 0) sb.append("\n⚠ $corrupt linii corupte")
+        findViewById<TextView>(R.id.tvSummaryContent).text = sb.toString()
+
+        buildChart()
+    }
+
+    private fun buildChart() {
+        val chart = findViewById<BarChartView>(R.id.chart) ?: return
+        val trips = Trips.readAll(this).first
+        val fixed = prefs.getFloat("fixedDaily", 0f)
+        val n = if (period == "YEAR") 12 else if (period == "MONTH") 30 else 7
+        val vals = FloatArray(n)
+        val daySets = Array(n) { HashSet<Int>() }
+        val labels = Array(n) { "" }
+        val title: String
+        if (period == "YEAR") {
+            title = "Profit net pe luni (anul acesta)"
+            for (i in 0 until n) labels[i] = (i + 1).toString()
+            val y = Calendar.getInstance().get(Calendar.YEAR)
+            for (t in trips) {
+                val c = Calendar.getInstance()
+                c.timeInMillis = t.ts
+                if (c.get(Calendar.YEAR) == y) {
+                    val i = c.get(Calendar.MONTH)
+                    vals[i] += t.net
+                    daySets[i].add(Trips.dayKey(t.ts))
+                }
+            }
+        } else {
+            title = if (n == 7) "Profit net pe zile (ultimele 7 zile)" else "Profit net pe zile (ultimele 30 de zile)"
+            val starts = LongArray(n)
+            val fmt = SimpleDateFormat(if (n == 7) "EE" else "d", Locale.getDefault())
+            for (i in 0 until n) {
+                val c = Calendar.getInstance()
+                c.set(Calendar.HOUR_OF_DAY, 0); c.set(Calendar.MINUTE, 0); c.set(Calendar.SECOND, 0); c.set(Calendar.MILLISECOND, 0)
+                c.add(Calendar.DAY_OF_YEAR, -(n - 1 - i))
+                starts[i] = c.timeInMillis
+                labels[i] = if (n == 7 || i % 5 == 4 || i == n - 1) fmt.format(c.time) else ""
+            }
+            for (t in trips) {
+                var idx = -1
+                for (i in n - 1 downTo 0) { if (t.ts >= starts[i]) { idx = i; break } }
+                if (idx >= 0) {
+                    vals[idx] += t.net
+                    daySets[idx].add(Trips.dayKey(t.ts))
+                }
+            }
+        }
+        for (i in 0 until n) vals[i] -= fixed * daySets[i].size
+        findViewById<TextView>(R.id.tvChartTitle).text = title
+        chart.setData(vals, labels)
+    }
+
+    private fun export() {
+        try {
+            val txt = try { openFileInput("offers.csv").bufferedReader().use { it.readText() } } catch (_: Exception) { "" }
+            if (txt.isBlank()) { Toast.makeText(this, "Nu există curse de exportat", Toast.LENGTH_SHORT).show(); return }
+            val header = "timestamp,tarif,km_preluare,km_cursa,ron_per_km,minute,cheltuieli,profit_net,comision,combustibil,uzura\n"
+            val i = Intent(Intent.ACTION_SEND)
+            i.type = "text/plain"
+            i.putExtra(Intent.EXTRA_SUBJECT, "ProfitRide - export curse")
+            i.putExtra(Intent.EXTRA_TEXT, header + txt)
+            startActivity(Intent.createChooser(i, "Export curse"))
+        } catch (_: Exception) {}
+    }
+
+    private fun deleteLast() {
+        val last = Trips.readAll(this).first.maxByOrNull { it.ts }
+        if (last == null) { Toast.makeText(this, "Nu există curse", Toast.LENGTH_SHORT).show(); return }
+        AlertDialog.Builder(this).setTitle("Șterge ultima cursă")
+            .setMessage("Ștergi cursa de %.2f RON (%.1f km)?".format(last.price, last.pk + last.tk))
+            .setPositiveButton("Da") { _, _ -> Trips.deleteLine(this, last.line); load() }
+            .setNegativeButton("Nu", null).show()
+    }
+}
+''')
+
+w('app/src/main/java/ro/profitride/TripsActivity.kt', r'''
+package ro.profitride
+import android.app.AlertDialog
+import android.os.Bundle
+import android.view.View
+import android.widget.ArrayAdapter
+import android.widget.ListView
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class TripsActivity : AppCompatActivity() {
+    private lateinit var period: String
+    private var items: List<Trips.Trip> = emptyList()
+    private val df = SimpleDateFormat("dd.MM HH:mm", Locale.getDefault())
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        try {
+            setContentView(R.layout.activity_trips)
+            period = intent.getStringExtra("PERIOADA") ?: "DAY"
+            val name = when (period) { "DAY" -> "azi"; "WEEK" -> "săptămâna aceasta"; "MONTH" -> "luna aceasta"; else -> "anul acesta" }
+            findViewById<TextView>(R.id.tvTripsTitle).text = "Curse – $name"
+            findViewById<ListView>(R.id.lvTrips).setOnItemClickListener { _, _, pos, _ ->
+                items.getOrNull(pos)?.let { confirmDelete(it) }
+            }
+            refresh()
+        } catch (e: Exception) { finish() }
+    }
+
+    private fun refresh() {
+        val eff = Trips.effStart(this, period)
+        items = Trips.readAll(this).first.filter { it.ts >= eff }.sortedByDescending { it.ts }
+        val rows = items.map { t ->
+            val h = if (t.min > 0f) "  ·  %.0f RON/oră".format(t.price / (t.min / 60f)) else ""
+            df.format(Date(t.ts)) + "   " + "%.2f".format(t.price) + " RON\n" +
+                "%.1f km  ·  %.2f RON/km  ·  net %.2f".format(t.pk + t.tk, t.gross, t.net) + h
+        }
+        findViewById<ListView>(R.id.lvTrips).adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, rows)
+        findViewById<TextView>(R.id.tvTripsEmpty).visibility = if (rows.isEmpty()) View.VISIBLE else View.GONE
+    }
+
+    private fun confirmDelete(t: Trips.Trip) {
+        AlertDialog.Builder(this).setTitle("Șterge cursa")
+            .setMessage("Ștergi cursa din " + df.format(Date(t.ts)) + " (" + "%.2f".format(t.price) + " RON)?")
+            .setPositiveButton("Da") { _, _ -> Trips.deleteLine(this, t.line); refresh() }
+            .setNegativeButton("Nu", null).show()
+    }
+}
+''')
+
+w('app/src/main/java/ro/profitride/FuelActivity.kt', r'''
+package ro.profitride
+import android.app.AlertDialog
+import android.os.Bundle
+import android.widget.Button
+import android.widget.EditText
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class FuelActivity : AppCompatActivity() {
+    data class Fill(val ts: Long, val odo: Float, val liters: Float, val price: Float)
+    private val df = SimpleDateFormat("dd.MM.yy", Locale.getDefault())
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        try {
+            setContentView(R.layout.activity_fuel)
+            findViewById<Button>(R.id.btnAddFuel).setOnClickListener { add() }
+            findViewById<Button>(R.id.btnApplyFuel).setOnClickListener { apply() }
+            findViewById<Button>(R.id.btnClearFuel).setOnClickListener {
+                AlertDialog.Builder(this).setTitle("Șterge istoricul").setMessage("Ștergi toate alimentările?")
+                    .setPositiveButton("Da") { _, _ -> deleteFile("fuel.csv"); refresh() }
+                    .setNegativeButton("Nu", null).show()
+            }
+            refresh()
+        } catch (e: Exception) { finish() }
+    }
+
+    private fun fills(): List<Fill> {
+        val out = ArrayList<Fill>()
+        try {
+            openFileInput("fuel.csv").bufferedReader().useLines { ls ->
+                ls.forEach { raw ->
+                    val p = raw.trim().split(",")
+                    if (p.size >= 4) {
+                        val ts = p[0].toLongOrNull(); val o = p[1].toFloatOrNull()
+                        val l = p[2].toFloatOrNull(); val pr = p[3].toFloatOrNull()
+                        if (ts != null && o != null && l != null && pr != null) out.add(Fill(ts, o, l, pr))
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return out.sortedBy { it.odo }
+    }
+
+    private fun consumption(f: List<Fill>): Float? {
+        if (f.size < 2) return null
+        val km = f.last().odo - f.first().odo
+        if (km <= 0f) return null
+        val l = f.drop(1).sumOf { it.liters.toDouble() }.toFloat()
+        return l / km * 100f
+    }
+
+    private fun num(id: Int): Float? = findViewById<EditText>(id).text.toString().replace(',', '.').toFloatOrNull()
+
+    private fun add() {
+        val odo = num(R.id.etOdo); val l = num(R.id.etLiters); val pr = num(R.id.etPriceL)
+        if (odo == null || l == null || pr == null || odo <= 0f || l <= 0f || pr <= 0f) {
+            Toast.makeText(this, "Completează toate câmpurile", Toast.LENGTH_SHORT).show(); return
+        }
+        try {
+            openFileOutput("fuel.csv", MODE_APPEND).bufferedWriter().use { it.appendLine("${System.currentTimeMillis()},$odo,$l,$pr") }
+            findViewById<EditText>(R.id.etOdo).setText("")
+            findViewById<EditText>(R.id.etLiters).setText("")
+            findViewById<EditText>(R.id.etPriceL).setText("")
+            Toast.makeText(this, "Salvat", Toast.LENGTH_SHORT).show()
+            refresh()
+        } catch (_: Exception) {}
+    }
+
+    private fun apply() {
+        val f = fills()
+        val c = consumption(f)
+        if (c == null) { Toast.makeText(this, "Ai nevoie de minim 2 alimentări", Toast.LENGTH_SHORT).show(); return }
+        val last = f.maxByOrNull { it.ts } ?: return
+        getSharedPreferences("cfg", MODE_PRIVATE).edit().putFloat("consumption", c).putFloat("fuelPrice", last.price).apply()
+        Toast.makeText(this, "Aplicat: %.1f L/100km, %.2f RON/L".format(c, last.price), Toast.LENGTH_LONG).show()
+    }
+
+    private fun refresh() {
+        val f = fills()
+        val c = consumption(f)
+        val totL = f.sumOf { it.liters.toDouble() }
+        val avgP = if (totL > 0.0) (f.sumOf { (it.liters * it.price).toDouble() } / totL).toFloat() else 0f
+        val sb = StringBuilder()
+        sb.append("Alimentări: ${f.size}\n")
+        if (c != null) {
+            sb.append("Consum real: ${"%.2f".format(c)} L/100km\n")
+            sb.append("Preț mediu: ${"%.2f".format(avgP)} RON/L\n")
+            sb.append("Cost: ${"%.2f".format(c * avgP / 100f)} RON/km\n")
+        } else {
+            sb.append("Adaugă minim 2 alimentări pline\npentru a calcula consumul.\n")
+        }
+        if (f.isNotEmpty()) {
+            sb.append("----------\nUltimele:\n")
+            f.takeLast(5).reversed().forEach {
+                sb.append("${df.format(Date(it.ts))}  ${"%.0f".format(it.odo)} km  ${"%.1f".format(it.liters)} L  ${"%.2f".format(it.price)}\n")
+            }
+        }
+        findViewById<TextView>(R.id.tvFuelInfo).text = sb.toString().trimEnd()
+    }
+}
+''')
+
+w('app/src/main/java/ro/profitride/VehicleActivity.kt', r'''
+package ro.profitride
+import android.app.DatePickerDialog
+import android.os.Bundle
+import android.widget.Button
+import android.widget.EditText
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
+
+class VehicleActivity : AppCompatActivity() {
+    private lateinit var prefs: android.content.SharedPreferences
+    private val df = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        try {
+            setContentView(R.layout.activity_vehicle)
+            prefs = getSharedPreferences("vehicle", MODE_PRIVATE)
+            val fields = listOf(
+                "rca" to findViewById<EditText>(R.id.etRca),
+                "rcaPers" to findViewById<EditText>(R.id.etRcaPers),
+                "rcaBag" to findViewById<EditText>(R.id.etRcaBag),
+                "itp" to findViewById<EditText>(R.id.etItp),
+                "stingator" to findViewById<EditText>(R.id.etStingator),
+                "trusa" to findViewById<EditText>(R.id.etTrusa),
+                "copie" to findViewById<EditText>(R.id.etCopie),
+                "ecusoane" to findViewById<EditText>(R.id.etEcusoane),
+                "fisa" to findViewById<EditText>(R.id.etFisa)
+            )
+            for ((k, et) in fields) {
+                val s = prefs.getLong(k, 0L)
+                if (s > 0) et.setText(df.format(Calendar.getInstance().apply { timeInMillis = s }.time))
+                et.setOnClickListener { showDp(k, et) }
+            }
+            findViewById<Button>(R.id.btnSaveVehicle).setOnClickListener { Toast.makeText(this, "Salvat!", Toast.LENGTH_SHORT).show(); finish() }
+            findViewById<Button>(R.id.btnResetVehicle).setOnClickListener {
+                prefs.edit().clear().apply()
+                fields.forEach { it.second.setText("") }
+                Toast.makeText(this, "Resetat!", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) { Toast.makeText(this, "Eroare: ${e.message}", Toast.LENGTH_LONG).show(); finish() }
+    }
+    private fun showDp(k: String, et: EditText) {
+        val c = Calendar.getInstance()
+        val cur = prefs.getLong(k, 0L)
+        if (cur > 0) c.timeInMillis = cur
+        DatePickerDialog(this, { _, y, m, d ->
+            val nc = Calendar.getInstance().apply { set(y, m, d, 0, 0, 0) }
+            prefs.edit().putLong(k, nc.timeInMillis).apply()
+            et.setText(df.format(nc.time))
+        }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).apply {
+            datePicker.minDate = System.currentTimeMillis() - 1000; show()
+        }
+    }
+}
+''')
+
+w('app/src/main/java/ro/profitride/ExpiryWorker.kt', r'''
+package ro.profitride
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.work.Worker
+import androidx.work.WorkerParameters
+import java.util.Calendar
+
+class ExpiryWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
+    override fun doWork(): Result {
+        try {
+            val p = applicationContext.getSharedPreferences("vehicle", Context.MODE_PRIVATE)
+            val items = mapOf("rca" to "RCA", "rcaPers" to "RCA Persoane", "rcaBag" to "RCA Bagaje", "itp" to "ITP",
+                "stingator" to "Stingător", "trusa" to "Trusă Medicală", "copie" to "Copie Conformă",
+                "ecusoane" to "Ecusoane", "fisa" to "Fișă Medicală")
+            val today = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }.timeInMillis
+            for ((k, l) in items) {
+                try {
+                    val e = p.getLong(k, 0L)
+                    if (e > 0) {
+                        val d = Math.round((e - today) / 86_400_000.0)
+                        if (d == 30L || d == 15L || d == 10L || d == 3L) send(l, d.toInt())
+                    }
+                } catch (_: Exception) {}
+            }
+        } catch (_: Exception) {}
+        return Result.success()
+    }
+    private fun send(l: String, d: Int) {
+        try {
+            val ch = "vehicle_alerts"
+            val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) nm.createNotificationChannel(NotificationChannel(ch, "Alerte", NotificationManager.IMPORTANCE_HIGH))
+            val n = NotificationCompat.Builder(applicationContext, ch).setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setContentTitle("Atentie! $l expira curand!").setContentText("Mai ai $d zile: $l.")
+                .setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true).build()
+            nm.notify(l.hashCode(), n)
+        } catch (_: Exception) {}
+    }
+}
+''')
+
+w('app/src/main/java/ro/profitride/SettingsActivity.kt', r'''
+package ro.profitride
+import android.os.Bundle
+import android.widget.Button
+import android.widget.EditText
+import androidx.appcompat.app.AppCompatActivity
+
+class SettingsActivity : AppCompatActivity() {
+    private val fields = listOf(
+        Triple("fuelPrice", R.id.etFuelPrice, 7.5f),
+        Triple("consumption", R.id.etConsumption, 7f),
+        Triple("commission", R.id.etCommission, 20f),
+        Triple("extraCost", R.id.etExtraCost, 0.5f),
+        Triple("fixedDaily", R.id.etFixedDaily, 0f),
+        Triple("goalDaily", R.id.etGoal, 500f),
+        Triple("minPerKm", R.id.etMinPerKm, 2.5f),
+        Triple("minPerHour", R.id.etMinPerHour, 60f),
+        Triple("longPickupKm", R.id.etLongPickup, 4f),
+        Triple("minPerKmLong", R.id.etMinPerKmLong, 3f),
+        Triple("avgSpeedKmh", R.id.etAvgSpeed, 25f)
+    )
+
+    private fun ttsName(m: Int) = when (m) {
+        1 -> "Anunț vocal: toate ofertele"
+        2 -> "Anunț vocal: doar profitabile"
+        3 -> "Anunț vocal: doar neprofitabile"
+        else -> "Anunț vocal: oprit"
+    }
+    private fun themeName(m: Int) = when (m) {
+        1 -> "Temă: luminoasă"
+        2 -> "Temă: întunecată"
+        else -> "Temă: după sistem"
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        try {
+            setContentView(R.layout.activity_settings)
+            val p = getSharedPreferences("cfg", MODE_PRIVATE)
+            for ((k, id, def) in fields) findViewById<EditText>(id).setText(p.getFloat(k, def).toString())
+
+            val bt = findViewById<Button>(R.id.btnTts)
+            bt.text = ttsName(p.getInt("ttsMode", 1))
+            bt.setOnClickListener {
+                val next = when (p.getInt("ttsMode", 1)) { 1 -> 2; 2 -> 3; 3 -> 0; else -> 1 }
+                p.edit().putInt("ttsMode", next).apply()
+                bt.text = ttsName(next)
+            }
+            val bh = findViewById<Button>(R.id.btnTheme)
+            bh.text = themeName(p.getInt("themeMode", 0))
+            bh.setOnClickListener {
+                val next = (p.getInt("themeMode", 0) + 1) % 3
+                p.edit().putInt("themeMode", next).apply()
+                bh.text = themeName(next)
+                App.applyTheme(this)
+            }
+            findViewById<Button>(R.id.btnSave).setOnClickListener {
+                val e = p.edit()
+                for ((k, id, def) in fields) {
+                    e.putFloat(k, findViewById<EditText>(id).text.toString().replace(',', '.').toFloatOrNull() ?: def)
+                }
+                e.apply()
+                finish()
+            }
+        } catch (e: Exception) { finish() }
+    }
+}
+''')
+
+w('app/src/main/java/ro/profitride/SetupActivity.kt', r'''
+package ro.profitride
+import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
+class SetupActivity : AppCompatActivity() {
+    override fun onCreate(b: Bundle?) { super.onCreate(b); setContentView(R.layout.activity_setup) }
+}
+''')
+
+w('app/src/main/java/ro/profitride/OfferReader.kt', r'''
+package ro.profitride
+
+import android.accessibilityservice.AccessibilityService
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import android.speech.tts.TextToSpeech
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
+import androidx.core.content.ContextCompat
+import java.io.File
+import java.util.Locale
+
+class OfferReader : AccessibilityService() {
+
+    companion object {
+        @Volatile var isStopped = false
+        @Volatile var instance: OfferReader? = null
+        private val PKGS = listOf("ee.mtakso", "com.ubercab", "com.mytaxi", "com.clever")
+        private const val DEDUP_MS = 60_000L
+        private const val HASH_MS = 300L
+        private const val MAX_LOG = 500_000L
+        private const val STALE_PENDING_MS = 10 * 60 * 1000L
+        private const val REOFFER_MS = 30_000L
+        private const val REJECT_MS = 45_000L
+        private const val SCREEN_LOG_THROTTLE_MS = 5000L
+    }
+
+    private var overlay: View? = null
+    private var sideBarView: View? = null
+    private var sidePanelView: View? = null
+    private lateinit var wm: WindowManager
+    private val handler = Handler(Looper.getMainLooper())
+    private val autoDismiss = Runnable { removeOverlay() }
+    private var tts: TextToSpeech? = null
+    private var vibrator: Vibrator? = null
+    private val sb = StringBuilder(2048)
+    private var lastTextHash = 0
+    private var lastTextTime = 0L
+    private var lastScreenLogAt = 0L
+    private var lastOfferKey = ""
+    private var lastOfferAt = 0L
+    private var pendingOffer: OfferParser.Offer? = null
+    private var pendingAt = 0L
+    private var rejectRunnable: Runnable? = null
+    private var lastSavedPrice = 0f
+    private var lastSavedKm = 0f
+    private var lastSavedAt = 0L
+
+    private fun isOfficial(p: String) = PKGS.any { p.startsWith(it) }
+
+    private fun log(m: String) {
+        try {
+            val f = File(filesDir, "debug.txt")
+            if (f.exists() && f.length() > MAX_LOG) f.delete()
+            f.appendText("${System.currentTimeMillis()}: $m\n")
+        } catch (_: Throwable) {}
+    }
+
+    private val screenOff = object : BroadcastReceiver() {
+        override fun onReceive(c: Context?, i: Intent?) {
+            if (i?.action == Intent.ACTION_SCREEN_OFF) { removeOverlay(); removeSidePanel() }
+        }
+    }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        try {
+            instance = this
+            wm = getSystemService(WINDOW_SERVICE) as WindowManager
+            vibrator = if (Build.VERSION.SDK_INT >= 31)
+                (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+            else @Suppress("DEPRECATION") getSystemService(VIBRATOR_SERVICE) as Vibrator
+            tts = TextToSpeech(this) { if (it == TextToSpeech.SUCCESS) tts?.language = Locale("ro", "RO") }
+            try { ContextCompat.registerReceiver(this, screenOff, IntentFilter(Intent.ACTION_SCREEN_OFF), ContextCompat.RECEIVER_NOT_EXPORTED) } catch (_: Throwable) {}
+            if (!isStopped) showSideBar()
+            log("SERVICE START")
+        } catch (_: Throwable) {}
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (isStopped) return
+        if (event == null) return
+        try {
+            val pkg = event.packageName?.toString()?.lowercase() ?: return
+            if (!isOfficial(pkg)) return
+
+            if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+                val t = "${event.text?.joinToString(" ") ?: ""} ${event.source?.text ?: ""} ${event.source?.contentDescription ?: ""}".lowercase()
+                val now0 = System.currentTimeMillis()
+                val o = pendingOffer
+                if ((t.contains("accept") || t.contains("confirm")) && o != null && now0 - pendingAt < STALE_PENDING_MS) {
+                    log("ACCEPT CLICK")
+                    rejectRunnable?.let { handler.removeCallbacks(it) }
+                    rejectRunnable = null
+                    saveTrip(o.priceRon, o.pickupKm, o.tripKm, now0)
+                    lastSavedPrice = o.priceRon; lastSavedKm = o.pickupKm + o.tripKm; lastSavedAt = now0
+                    pendingOffer = null; lastOfferKey = ""
+                }
+                return
+            }
+
+            sb.setLength(0)
+            val roots = ArrayList<AccessibilityNodeInfo>()
+            try { windows?.forEach { w -> w.root?.let { r -> if (r.packageName?.toString()?.lowercase()?.let { isOfficial(it) } == true) roots.add(r) } } } catch (_: Throwable) {}
+            if (roots.isEmpty()) { rootInActiveWindow?.let { roots.add(it) } }
+            if (roots.isEmpty()) return
+            for (r in roots) collect(r, sb, 0)
+            val raw = sb.toString().lowercase()
+            if (raw.isEmpty()) return
+            val h = raw.hashCode()
+            val now = System.currentTimeMillis()
+            if (h == lastTextHash && now - lastTextTime < HASH_MS) return
+            lastTextHash = h; lastTextTime = now
+
+            val navMarkers = raw.contains("navighează") || raw.contains("navigheaza") ||
+                raw.contains("recalculeaz") || raw.contains("ieșirea") || raw.contains("iesirea") ||
+                raw.contains("limita") || raw.contains("limită") || raw.contains("se caută curse") ||
+                raw.contains("se cauta curse")
+            val hasAcceptConfirm = raw.contains("accept") || raw.contains("confirm") || raw.contains("selecteaz") || raw.contains("decline")
+            val looksOffer = !navMarkers && hasAcceptConfirm && raw.contains("km") && raw.contains("min")
+
+            if (looksOffer || now - lastScreenLogAt > SCREEN_LOG_THROTTLE_MS) {
+                lastScreenLogAt = now
+                if (looksOffer || raw.contains("km")) {
+                    log("SCREEN $pkg: " + raw.replace('\n', '|').take(300))
+                }
+            }
+
+            if (looksOffer) {
+                val offer = OfferParser.parse(raw, avgSpeed())
+                if (offer == null) {
+                    log("NEPARSAT $pkg: " + raw.replace('\n', '|').take(400))
+                } else {
+                    val key = "${offer.priceRon}|${offer.pickupKm}|${offer.tripKm}"
+                    val justSaved = Math.abs(offer.priceRon - lastSavedPrice) < 0.05f &&
+                        Math.abs(offer.pickupKm + offer.tripKm - lastSavedKm) < 0.05f && now - lastSavedAt < DEDUP_MS
+                    if (!justSaved && (key != lastOfferKey || now - lastOfferAt > REOFFER_MS)) {
+                        val old = pendingOffer
+                        if (old != null && key != lastOfferKey) saveRejected(old)
+                        rejectRunnable?.let { handler.removeCallbacks(it) }
+                        lastOfferKey = key; lastOfferAt = now
+                        pendingOffer = offer; pendingAt = now
+                        log("OFERTA: $key")
+                        showOverlay(Calc.compute(this, offer))
+                        val r = Runnable {
+                            if (pendingOffer === offer) { saveRejected(offer); pendingOffer = null }
+                        }
+                        rejectRunnable = r
+                        handler.postDelayed(r, REJECT_MS)
+                    }
+                }
+            }
+        } catch (e: Throwable) { log("EVT ERR: ${e.message?.take(60)}") }
+    }
+
+    private fun saveRejected(o: OfferParser.Offer) {
+        try {
+            val r = Calc.compute(this, o)
+            val line = "${System.currentTimeMillis()},${o.priceRon},${o.pickupKm},${o.tripKm},${r.grossPerKm},${r.totalMin},${r.netProfit},${if (r.level == 2) 1 else 0}"
+            openFileOutput("rejected.csv", MODE_APPEND).bufferedWriter().use { it.appendLine(line) }
+            log("REFUZAT: ${o.priceRon} RON")
+        } catch (_: Throwable) {}
+    }
+
+    private fun saveTrip(price: Float, pk: Float, tk: Float, now: Long) {
+        try {
+            if (Math.abs(price - lastSavedPrice) < 0.05f && Math.abs((pk + tk) - lastSavedKm) < 0.05f && now - lastSavedAt < 3000L) {
+                log("DUP SKIP ${price}RON")
+                return
+            }
+            val offer = OfferParser.Offer(price, pk, tk, pendingOffer?.pickupMinutes ?: 0, pendingOffer?.tripMinutes ?: 0)
+            val r = Calc.compute(this, offer)
+            val line = "$now,$price,$pk,$tk,${r.grossPerKm},${r.totalMin},${r.totalExpenses},${r.netProfit},${r.commissionCut},${r.fuelCost},${r.extraCost}"
+            openFileOutput("offers.csv", MODE_APPEND).bufferedWriter().use { it.appendLine(line) }
+            log("SALVAT: $price RON, ${pk + tk} km")
+            handler.post {
+                Toast.makeText(this@OfferReader, "Salvat: ${"%.2f".format(price)} RON", Toast.LENGTH_SHORT).show()
+                showSaveConfirm(r)
+            }
+        } catch (e: Throwable) { log("SAVE ERR: ${e.message?.take(60)}") }
+    }
+
+    private fun showSaveConfirm(r: Calc.Result) {
+        try {
+            removeOverlay()
+            val d = resources.displayMetrics.density
+            val c = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = GradientDrawable().apply { setColor(Color.parseColor("#EE111111")); cornerRadius = 20f * d; setStroke((4 * d).toInt(), Calc.GREEN) }
+                setPadding((14 * d).toInt(), (10 * d).toInt(), (14 * d).toInt(), (10 * d).toInt())
+            }
+            c.addView(TextView(this).apply { text = "Salvat"; setTextColor(Calc.GREEN); textSize = 15f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER })
+            c.addView(TextView(this).apply { text = "%.2f RON · %.1f km".format(r.priceRon, r.totalKm); setTextColor(Color.WHITE); textSize = 12f; gravity = Gravity.CENTER })
+            val t = if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+            val p = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, t, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT)
+            p.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; p.y = (150 * d).toInt()
+            wm.addView(c, p); overlay = c; handler.postDelayed({ removeOverlay() }, 3000L)
+        } catch (_: Throwable) {}
+    }
+
+    private fun avgSpeed(): Float {
+        val v = getSharedPreferences("cfg", MODE_PRIVATE).getFloat("avgSpeedKmh", 25f)
+        return if (v >= 5f) v else 25f
+    }
+
+    private fun collect(n: AccessibilityNodeInfo?, b: StringBuilder, d: Int) {
+        if (n == null || d > 30 || b.length > 8000) return
+        n.text?.toString()?.trim()?.takeIf { it.length in 1..200 }?.let { if (it.isNotEmpty()) b.append(it).append('\n') }
+        n.contentDescription?.toString()?.trim()?.takeIf { it.length in 1..200 }?.let { if (it.isNotEmpty()) b.append(it).append('\n') }
+        for (i in 0 until n.childCount) collect(n.getChild(i), b, d + 1)
+    }
+
+    private fun speak(r: Calc.Result) {
+        val mode = getSharedPreferences("cfg", MODE_PRIVATE).getInt("ttsMode", 1)
+        val ok = when (mode) { 1 -> true; 2 -> r.level == 2; 3 -> r.level == 0; else -> false }
+        if (!ok) return
+        try { tts?.speak(r.speech, TextToSpeech.QUEUE_FLUSH, null, "o") } catch (_: Throwable) {}
+    }
+
+    private fun vibrate(level: Int) {
+        try {
+            val v = vibrator ?: return
+            val ms = when (level) { 2 -> 120L; 1 -> 250L; else -> 500L }
+            if (Build.VERSION.SDK_INT >= 26) v.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE)) else @Suppress("DEPRECATION") v.vibrate(ms)
+        } catch (_: Throwable) {}
+    }
+
+    private fun showOverlay(r: Calc.Result) {
+        try {
+            removeOverlay()
+            val d = resources.displayMetrics.density
+            fun dp(v: Int): Int = (v * d).toInt()
+            val c = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = GradientDrawable().apply { setColor(Color.parseColor("#F2000000")); cornerRadius = 22f * d; setStroke(dp(5), r.color) }
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                setOnTouchListener(dragListener()); elevation = 18f
+            }
+            val hr = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            hr.addView(TextView(this).apply {
+                text = r.label; setTextColor(Color.BLACK); textSize = 20f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setPadding(dp(10), dp(4), dp(10), dp(4))
+                background = GradientDrawable().apply { setColor(r.color); cornerRadius = 12f * d }
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            hr.addView(TextView(this).apply { text = "X"; setTextColor(Color.parseColor("#AAAAAA")); textSize = 18f; setPadding(dp(12), 0, dp(4), 0); setOnClickListener { removeOverlay() } })
+            c.addView(hr)
+
+            fun col(big: String, small: String): LinearLayout {
+                val box = LinearLayout(this@OfferReader)
+                box.orientation = LinearLayout.VERTICAL
+                box.gravity = Gravity.CENTER
+                box.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                val b = TextView(this@OfferReader)
+                b.text = big; b.setTextColor(r.color); b.textSize = 38f; b.typeface = Typeface.DEFAULT_BOLD; b.gravity = Gravity.CENTER
+                val s = TextView(this@OfferReader)
+                s.text = small; s.setTextColor(Color.parseColor("#BBBBBB")); s.textSize = 12f; s.gravity = Gravity.CENTER
+                box.addView(b); box.addView(s)
+                return box
+            }
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(0, dp(8), 0, dp(4)) }
+            row.addView(col("%.2f".format(r.grossPerKm), "RON/km"))
+            row.addView(col("%.0f".format(r.netProfit), "RĂMÂNE"))
+            c.addView(row)
+
+            val hour = if (r.grossPerHour > 0f) "RON/oră: %.0f  ·  ".format(r.grossPerHour) else ""
+            c.addView(TextView(this).apply {
+                text = hour + "%.1f km · %d min · %.2f RON".format(r.totalKm, r.totalMin, r.priceRon)
+                setTextColor(Color.WHITE); textSize = 13f; gravity = Gravity.CENTER
+            })
+            c.addView(TextView(this).apply {
+                text = "Cheltuieli: %.0f RON".format(r.totalExpenses) + if (r.longPickup) "   ⚠ Preluare lungă" else ""
+                setTextColor(Color.parseColor(if (r.longPickup) "#FFB74D" else "#AAAAAA")); textSize = 12f; gravity = Gravity.CENTER
+            })
+
+            val t = if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+            val p = WindowManager.LayoutParams(dp(320), WindowManager.LayoutParams.WRAP_CONTENT, t, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT)
+            p.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; p.y = dp(90)
+            c.tag = p
+            wm.addView(c, p); overlay = c
+            handler.postDelayed(autoDismiss, 25_000L)
+            speak(r); vibrate(r.level)
+        } catch (_: Throwable) {}
+    }
+
+    private fun dragListener(): View.OnTouchListener {
+        var sx = 0; var sy = 0; var tx = 0f; var ty = 0f; var mv = false
+        return View.OnTouchListener { v, e ->
+            val p = v.tag as? WindowManager.LayoutParams ?: return@OnTouchListener false
+            when (e.action) {
+                MotionEvent.ACTION_DOWN -> { sx = p.x; sy = p.y; tx = e.rawX; ty = e.rawY; mv = false; true }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (e.rawX - tx).toInt(); val dy = (e.rawY - ty).toInt()
+                    if (dx * dx + dy * dy > 100) mv = true
+                    if (mv) { p.x = sx + dx; p.y = sy + dy; try { wm.updateViewLayout(v, p) } catch (_: Exception) {} }
+                    true
+                }
+                MotionEvent.ACTION_UP -> { if (!mv) removeOverlay(); true }
+                else -> false
+            }
+        }
+    }
+
+    private fun removeOverlay() {
+        try { handler.removeCallbacks(autoDismiss); overlay?.let { try { wm.removeView(it) } catch (_: Exception) {} }; overlay = null } catch (_: Throwable) {}
+    }
+
+    fun showSideBar() {
+        if (sideBarView != null) return
+        try {
+            val d = resources.displayMetrics.density
+            val bar = View(this).apply {
+                background = GradientDrawable().apply { shape = GradientDrawable.RECTANGLE; setColor(Color.parseColor("#80D32F2F")); cornerRadii = floatArrayOf(0f, 6f * d, 6f * d, 0f, 0f, 6f * d, 6f * d, 0f) }
+                setOnClickListener { toggleSidePanel() }; setOnTouchListener(barDrag())
+            }
+            val t = if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+            val p = WindowManager.LayoutParams((6 * d).toInt(), (180 * d).toInt(), t, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, PixelFormat.TRANSLUCENT)
+            p.gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            bar.tag = p
+            wm.addView(bar, p); sideBarView = bar
+        } catch (_: Throwable) {}
+    }
+
+    private fun barDrag(): View.OnTouchListener {
+        var sy = 0; var ty = 0f; var mv = false
+        return View.OnTouchListener { v, e ->
+            val p = v.tag as? WindowManager.LayoutParams ?: return@OnTouchListener false
+            when (e.action) {
+                MotionEvent.ACTION_DOWN -> { sy = p.y; ty = e.rawY; mv = false; true }
+                MotionEvent.ACTION_MOVE -> { val dy = (e.rawY - ty).toInt(); if (Math.abs(dy) > 15) mv = true; if (mv) { p.y = sy + dy; try { wm.updateViewLayout(v, p) } catch (_: Exception) {} }; true }
+                MotionEvent.ACTION_UP -> { if (!mv) v.performClick(); true }
+                else -> false
+            }
+        }
+    }
+
+    private fun toggleSidePanel() {
+        if (sidePanelView != null) { removeSidePanel(); return }
+        try {
+            val d = resources.displayMetrics.density
+            val p = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = GradientDrawable().apply { setColor(Color.parseColor("#F0111111")); cornerRadius = 20f * d; setStroke((2 * d).toInt(), Calc.GREEN) }
+                setPadding((16 * d).toInt(), (16 * d).toInt(), (16 * d).toInt(), (16 * d).toInt())
+            }
+            p.addView(TextView(this).apply { text = "ProfitRide Activ"; setTextColor(Calc.GREEN); textSize = 16f; typeface = Typeface.DEFAULT_BOLD; setPadding(0, 0, 0, (10 * d).toInt()) })
+            p.addView(TextView(this).apply { text = lastInfo(); setTextColor(Color.WHITE); textSize = 12f; typeface = Typeface.MONOSPACE; setPadding(0, 0, 0, (14 * d).toInt()) })
+            fun addBtn(txt: String, c: Int, a: () -> Unit) {
+                p.addView(Button(this).apply { text = txt; setTextColor(Color.WHITE); textSize = 13f; background = GradientDrawable().apply { setColor(c); cornerRadius = 30f * d }; setOnClickListener { a() } })
+            }
+            addBtn("Sumar", Color.parseColor("#9C27B0")) { removeSidePanel(); try { startActivity(Intent(this, SummaryActivity::class.java).putExtra("PERIOADA", "DAY").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {} }
+            addBtn("Curse azi", Color.parseColor("#009688")) { removeSidePanel(); try { startActivity(Intent(this, TripsActivity::class.java).putExtra("PERIOADA", "DAY").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {} }
+            addBtn("Setari", Color.parseColor("#2196F3")) { removeSidePanel(); try { startActivity(Intent(this, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {} }
+            addBtn("Opreste", Color.parseColor("#B71C1C")) { isStopped = true; removeSidePanel(); removeSideBar() }
+            val t = if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+            val lp = WindowManager.LayoutParams((280 * d).toInt(), WindowManager.LayoutParams.WRAP_CONTENT, t, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT)
+            lp.gravity = Gravity.START or Gravity.CENTER_VERTICAL; lp.x = (20 * d).toInt()
+            wm.addView(p, lp); sidePanelView = p
+            handler.postDelayed({ removeSidePanel() }, 15000L)
+        } catch (_: Throwable) {}
+    }
+
+    private fun lastInfo(): String {
+        return try {
+            val t = Trips.readAll(this).first.lastOrNull() ?: return "Nicio cursa."
+            val st = Trips.stats(this, "DAY")
+            "Ultima:\nTarif: ${"%.2f".format(t.price)} RON\nKm: ${"%.1f".format(t.pk + t.tk)}\nRON/km: ${"%.2f".format(t.gross)}\nNet: ${"%.2f".format(t.net)}\n--\nAzi: ${"%.0f".format(st.netAfterFixed)} RON (${st.count} curse)"
+        } catch (_: Exception) { "Nicio cursa." }
+    }
+
+    private fun removeSidePanel() { try { sidePanelView?.let { wm.removeView(it) } } catch (_: Throwable) {}; sidePanelView = null }
+    private fun removeSideBar() { try { sideBarView?.let { wm.removeView(it) } } catch (_: Throwable) {}; sideBarView = null }
+
+    override fun onInterrupt() { removeOverlay(); removeSideBar(); removeSidePanel() }
+    override fun onDestroy() {
+        instance = null
+        removeOverlay(); removeSideBar(); removeSidePanel()
+        try { unregisterReceiver(screenOff) } catch (_: Throwable) {}
+        try { tts?.stop(); tts?.shutdown() } catch (_: Throwable) {}
+        tts = null; super.onDestroy()
+    }
+}
+''')
